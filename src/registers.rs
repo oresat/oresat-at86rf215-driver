@@ -2,6 +2,181 @@
 
 use bitfield_struct::bitfield;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadOnly<T, const ADDR: u16, const SIZE: usize> {
+    pub value: T,
+}
+
+impl<T, const ADDR: u16, const SIZE: usize> ReadOnly<T, ADDR, SIZE> {
+    pub const fn new(value: T) -> Self {
+        Self { value }
+    }
+
+    pub const fn address(&self) -> u16 {
+        ADDR
+    }
+
+    pub const fn size(&self) -> usize {
+        SIZE
+    }
+
+    pub fn read_command(&self) -> [u8; 2] {
+        generate_read_header(ADDR)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WriteOnly<T, const ADDR: u16, const SIZE: usize> {
+    pub value: T,
+}
+
+impl<T, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
+    pub const fn new(value: T) -> Self {
+        Self { value }
+    }
+
+    pub const fn address(&self) -> u16 {
+        ADDR
+    }
+
+    pub const fn size(&self) -> usize {
+        SIZE
+    }
+}
+
+impl<T: Copy + Into<u8>, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
+    pub fn write_command(&self) -> Vec<u8> {
+        let bits: u8 = self.value.into();
+        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
+    }
+}
+
+impl<T: Copy + Into<u16>, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
+    pub fn write_command_u16(&self) -> Vec<u8> {
+        let bits: u16 = self.value.into();
+        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
+    }
+}
+
+impl<T: Copy + Into<u32>, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
+    pub fn write_command_u32(&self) -> Vec<u8> {
+        let bits: u32 = self.value.into();
+        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
+    }
+}
+
+impl<T: Copy + Into<u64>, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
+    pub fn write_command_u64(&self) -> Vec<u8> {
+        let bits: u64 = self.value.into();
+        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadWrite<T, const ADDR: u16, const SIZE: usize> {
+    pub value: T,
+}
+
+impl<T, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
+    pub const fn new(value: T) -> Self {
+        Self { value }
+    }
+
+    pub const fn address(&self) -> u16 {
+        ADDR
+    }
+
+    pub const fn size(&self) -> usize {
+        SIZE
+    }
+
+    pub fn read_command(&self) -> [u8; 2] {
+        generate_read_header(ADDR)
+    }
+}
+
+impl<T: Copy + Into<u8>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
+    pub fn write_command(&self) -> Vec<u8> {
+        let bits: u8 = self.value.into();
+        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
+    }
+}
+
+impl<T: Copy + Into<u16>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
+    pub fn write_command_u16(&self) -> Vec<u8> {
+        let bits: u16 = self.value.into();
+        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
+    }
+}
+
+impl<T: Copy + Into<u32>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
+    pub fn write_command_u32(&self) -> Vec<u8> {
+        let bits: u32 = self.value.into();
+        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
+    }
+}
+
+impl<T: Copy + Into<u64>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
+    pub fn write_command_u64(&self) -> Vec<u8> {
+        let bits: u64 = self.value.into();
+        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
+    }
+}
+
+
+pub const fn generate_read_header(addr: u16) -> [u8; 2] {
+    let addr = addr & 0x3FFF;
+    let cmd: u16 = (0b00 << 14) | addr;
+    [(cmd >> 8) as u8, (cmd & 0xFF) as u8]
+}
+
+pub const fn generate_write_header(addr: u16) -> [u8; 2] {
+    let addr = addr & 0x3FFF;
+    let cmd: u16 = (0b10 << 14) | addr;
+    [(cmd >> 8) as u8, (cmd & 0xFF) as u8]
+}
+
+trait ToLeVec {
+    fn to_le_vec(self) -> Vec<u8>;
+}
+
+impl ToLeVec for u8 {
+    #[inline]
+    fn to_le_vec(self) -> Vec<u8> {
+        vec![self]
+    }
+}
+
+impl ToLeVec for u16 {
+    #[inline]
+    fn to_le_vec(self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+}
+
+impl ToLeVec for u32 {
+    #[inline]
+    fn to_le_vec(self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+}
+
+impl ToLeVec for u64 {
+    #[inline]
+    fn to_le_vec(self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+}
+
+#[inline]
+fn build_write_command(header: [u8; 2], value_bytes: Vec<u8>) -> Vec<u8> {
+    let mut cmd = Vec::with_capacity(2 + value_bytes.len());
+    cmd.push(header[0]);
+    cmd.push(header[1]);
+    cmd.extend(value_bytes);
+    cmd
+}
+
 // =============================================================================
 // Common Chip Register Definitions
 // =============================================================================
