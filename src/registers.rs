@@ -2226,7 +2226,7 @@ impl TransceiverState {
     }
 }
 
-/// Transceiver Commands
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TransceiverCmd {
@@ -2316,4 +2316,54 @@ impl EnergyDetectionMode {
             _ => Self::Off, // Default fallback
         }
     }
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bbcn_pmuc_read_only_field() {
+        let mut pmuc = BbcnPmuc::new()
+            .with_en(true)
+            .with_avg(false);
+
+        // Verify we can read the sync field (it's read-only)
+        let sync_value = pmuc.sync();
+        assert_eq!(sync_value, 0);
+
+        // Verify we can set writable fields
+        assert_eq!(pmuc.en(), true);
+        pmuc.set_en(false);
+        assert_eq!(pmuc.en(), false);
+
+        assert_eq!(pmuc.avg(), false);
+        pmuc.set_avg(true);
+        assert_eq!(pmuc.avg(), true);
+
+        // The sync field should remain unchanged
+        assert_eq!(pmuc.sync(), 0);
+    }
+
+    #[test]
+    fn test_bbcn_pmuc_writable_fields() {
+        let pmuc = BbcnPmuc::new()
+            .with_en(true)
+            .with_avg(true)
+            .with_fed(true)
+            .with_iqsel(false)
+            .with_ccfts(true);
+
+        assert_eq!(pmuc.en(), true);
+        assert_eq!(pmuc.avg(), true);
+        assert_eq!(pmuc.fed(), true);
+        assert_eq!(pmuc.iqsel(), false);
+        assert_eq!(pmuc.ccfts(), true);
+    }
+
+
 }
