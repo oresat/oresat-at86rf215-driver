@@ -1,3 +1,4 @@
+pub mod radio;
 pub mod registers;
 
 pub fn add(left: u64, right: u64) -> u64 {
