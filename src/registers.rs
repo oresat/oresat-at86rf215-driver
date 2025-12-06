@@ -20,8 +20,13 @@ impl<T, const ADDR: u16, const SIZE: usize> ReadOnly<T, ADDR, SIZE> {
         SIZE
     }
 
-    pub fn read_command(&self) -> [u8; 2] {
-        generate_read_header(ADDR)
+    pub fn read_command(&self) -> Vec<u8> {
+        let header = generate_read_header(ADDR);
+        let mut cmd = Vec::with_capacity(2 + SIZE);
+        cmd.push(header[0]);
+        cmd.push(header[1]);
+        cmd.resize(2 + SIZE, 0x00); // Add SIZE dummy bytes
+        cmd
     }
 }
 
@@ -90,8 +95,13 @@ impl<T, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
         SIZE
     }
 
-    pub fn read_command(&self) -> [u8; 2] {
-        generate_read_header(ADDR)
+    pub fn read_command(&self) -> Vec<u8> {
+        let header = generate_read_header(ADDR);
+        let mut cmd = Vec::with_capacity(2 + SIZE);
+        cmd.push(header[0]);
+        cmd.push(header[1]);
+        cmd.resize(2 + SIZE, 0x00); // Add SIZE dummy bytes
+        cmd
     }
 }
 
@@ -123,10 +133,8 @@ impl<T: Copy + Into<u64>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR,
     }
 }
 
-
 pub const fn generate_read_header(addr: u16) -> [u8; 2] {
-    let addr = addr & 0x3FFF;
-    let cmd: u16 = (0b00 << 14) | addr;
+    let cmd = addr & 0x3FFF;
     [(cmd >> 8) as u8, (cmd & 0xFF) as u8]
 }
 
