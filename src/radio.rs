@@ -525,3 +525,109 @@ pub const BBC1_FBTXS: u16 = 0x2800;
 
 /// RX Frame Buffer Start (2.4GHz)
 pub const BBC1_FBRXS: u16 = 0x3800;
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rf_cfg_write_command() {
+        let mut radio = Radio::new();
+
+        radio.rf_cfg.value = radio.rf_cfg.value.with_drv(3).with_irqmm(true);
+        assert_eq!(radio.rf_cfg.value.into_bits(), 0b00001011);
+        radio.rf_cfg.value.set_irqp(true);
+        assert_eq!(radio.rf_cfg.value.into_bits(), 0b00001111);
+
+        let cmd = radio.rf_cfg.write_command();
+
+        // Should be [header_low, header_high, data]
+        assert_eq!(cmd.len(), 3);
+
+        // Verify header for address 0x0006 with write bit
+        // Write header: 0x8000 | 0x0006 = 0x8006
+        assert_eq!(cmd[0], 0x80);
+        assert_eq!(cmd[1], 0x06);
+        assert_eq!(cmd[2], 0b00001111); // 0x0F
+    }
+
+    #[test]
+    fn test_rf_cfg_read_command() {
+        let radio = Radio::new();
+
+        let cmd = radio.rf_cfg.read_command();
+
+        // Should be [header_low, header_high, dummy-byte]
+        assert_eq!(cmd.len(), 3);
+
+        // Verify header for address 0x0006 with read bit
+        // Read header: 0x0000 | 0x0006 = 0x0006
+        assert_eq!(cmd[0], 0x00);
+        assert_eq!(cmd[1], 0x06);
+        assert_eq!(cmd[2], 0x00); // dummy-byte
+    }
+
+    #[test]
+    fn test_rf09_cmd_write_command() {
+        let mut radio = Radio::new();
+
+        assert_eq!(radio.rf09_cmd.value.cmd(), TransceiverCmd::Nop);
+
+        radio.rf09_cmd.value.set_cmd(TransceiverCmd::Sleep);
+        assert_eq!(radio.rf09_cmd.value.cmd(), TransceiverCmd::Sleep);
+
+        let cmd = radio.rf09_cmd.write_command();
+
+        // Should be [header_low, header_high, data]
+        assert_eq!(cmd.len(), 3);
+
+        // Verify header for address 0x0103 with write bit
+        // Write header: 0x8000 | 0x0103 = 0x8103
+        assert_eq!(cmd[0], 0x81);
+        assert_eq!(cmd[1], 0x03);
+        assert_eq!(cmd[2], 0x01); // TransceiverCmd::Sleep value (1)
+    }
+
+    #[test]
+    fn test_bbc0_cnt_read_command() {
+        let radio = Radio::new();
+
+        let cmd = radio.bbc0_cnt.read_command();
+
+        // Should be [header_low, header_high, dummy-0..4]
+        assert_eq!(cmd.len(), 6);
+
+        // Verify header for address 0x0391 with read bit
+        // Read header: 0x0000 | 0x0391 = 0x0391
+        assert_eq!(cmd[0], 0x03);
+        assert_eq!(cmd[1], 0x91);
+
+        // Verify all dummy bytes are 0x00
+        assert_eq!(&cmd[2..6], &[0x00, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn test_rf09_ccf0_write_command_u16() {
+        let mut radio = Radio::new();
+
+        // Set a 16-bit channel center frequency value
+        radio.rf09_ccf0.value.set_ccf0(0x1234);
+
+        let cmd = radio.rf09_ccf0.write_command_u16();
+
+        // Should be [header_low, header_high, data_low, data_high]
+        assert_eq!(cmd.len(), 4);
+
+        // Verify header for address 0x0105 with write bit
+        // Write header: 0x8000 | 0x0105 = 0x8105
+        assert_eq!(cmd[0], 0x81);
+        assert_eq!(cmd[1], 0x05);
+        // data:
+        assert_eq!(cmd[2], 0x34); // LSB
+        assert_eq!(cmd[3], 0x12); // MSB
+    }
+}
