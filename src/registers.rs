@@ -21,12 +21,7 @@ impl<T, const ADDR: u16, const SIZE: usize> ReadOnly<T, ADDR, SIZE> {
     }
 
     pub fn read_command(&self) -> Vec<u8> {
-        let header = generate_read_header(ADDR);
-        let mut cmd = Vec::with_capacity(2 + SIZE);
-        cmd.push(header[0]);
-        cmd.push(header[1]);
-        cmd.resize(2 + SIZE, 0x00); // Add SIZE dummy bytes
-        cmd
+        build_read_command(generate_read_header(ADDR), SIZE)
     }
 }
 
@@ -96,12 +91,7 @@ impl<T, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
     }
 
     pub fn read_command(&self) -> Vec<u8> {
-        let header = generate_read_header(ADDR);
-        let mut cmd = Vec::with_capacity(2 + SIZE);
-        cmd.push(header[0]);
-        cmd.push(header[1]);
-        cmd.resize(2 + SIZE, 0x00); // Add SIZE dummy bytes
-        cmd
+        build_read_command(generate_read_header(ADDR), SIZE)
     }
 }
 
@@ -182,6 +172,15 @@ fn build_write_command(header: [u8; 2], value_bytes: Vec<u8>) -> Vec<u8> {
     cmd.push(header[0]);
     cmd.push(header[1]);
     cmd.extend(value_bytes);
+    cmd
+}
+
+#[inline]
+fn build_read_command(header: [u8; 2], size: usize) -> Vec<u8> {
+    let mut cmd = Vec::with_capacity(2 + size);
+    cmd.push(header[0]);
+    cmd.push(header[1]);
+    cmd.resize(2 + size, 0x00);
     cmd
 }
 
@@ -2226,7 +2225,6 @@ impl TransceiverState {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TransceiverCmd {
@@ -2328,9 +2326,7 @@ mod tests {
 
     #[test]
     fn test_bbcn_pmuc_read_only_field() {
-        let mut pmuc = BbcnPmuc::new()
-            .with_en(true)
-            .with_avg(false);
+        let mut pmuc = BbcnPmuc::new().with_en(true).with_avg(false);
 
         // Verify we can read the sync field (it's read-only)
         let sync_value = pmuc.sync();
@@ -2364,6 +2360,4 @@ mod tests {
         assert_eq!(pmuc.iqsel(), false);
         assert_eq!(pmuc.ccfts(), true);
     }
-
-
 }
