@@ -617,7 +617,7 @@ mod tests {
         // Set a 16-bit channel center frequency value
         radio.rf09_ccf0.value.set_ccf0(0x1234);
 
-        let cmd = radio.rf09_ccf0.write_command_u16();
+        let cmd = radio.rf09_ccf0.write_command();
 
         // Should be [header_low, header_high, data_low, data_high]
         assert_eq!(cmd.len(), 4);
