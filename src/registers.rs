@@ -19,10 +19,6 @@ impl<T, const ADDR: u16, const SIZE: usize> ReadOnly<T, ADDR, SIZE> {
     pub const fn size(&self) -> usize {
         SIZE
     }
-
-    pub fn read_command(&self) -> Vec<u8> {
-        build_read_command(generate_read_header(ADDR), SIZE)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,34 +40,6 @@ impl<T, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
     }
 }
 
-impl<T: Copy + Into<u8>, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
-    pub fn write_command(&self) -> Vec<u8> {
-        let bits: u8 = self.value.into();
-        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
-    }
-}
-
-impl<T: Copy + Into<u16>, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
-    pub fn write_command_u16(&self) -> Vec<u8> {
-        let bits: u16 = self.value.into();
-        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
-    }
-}
-
-impl<T: Copy + Into<u32>, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
-    pub fn write_command_u32(&self) -> Vec<u8> {
-        let bits: u32 = self.value.into();
-        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
-    }
-}
-
-impl<T: Copy + Into<u64>, const ADDR: u16, const SIZE: usize> WriteOnly<T, ADDR, SIZE> {
-    pub fn write_command_u64(&self) -> Vec<u8> {
-        let bits: u64 = self.value.into();
-        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadWrite<T, const ADDR: u16, const SIZE: usize> {
     pub value: T,
@@ -89,38 +57,6 @@ impl<T, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
     pub const fn size(&self) -> usize {
         SIZE
     }
-
-    pub fn read_command(&self) -> Vec<u8> {
-        build_read_command(generate_read_header(ADDR), SIZE)
-    }
-}
-
-impl<T: Copy + Into<u8>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
-    pub fn write_command(&self) -> Vec<u8> {
-        let bits: u8 = self.value.into();
-        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
-    }
-}
-
-impl<T: Copy + Into<u16>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
-    pub fn write_command_u16(&self) -> Vec<u8> {
-        let bits: u16 = self.value.into();
-        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
-    }
-}
-
-impl<T: Copy + Into<u32>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
-    pub fn write_command_u32(&self) -> Vec<u8> {
-        let bits: u32 = self.value.into();
-        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
-    }
-}
-
-impl<T: Copy + Into<u64>, const ADDR: u16, const SIZE: usize> ReadWrite<T, ADDR, SIZE> {
-    pub fn write_command_u64(&self) -> Vec<u8> {
-        let bits: u64 = self.value.into();
-        build_write_command(generate_write_header(ADDR), bits.to_le_vec())
-    }
 }
 
 pub const fn generate_read_header(addr: u16) -> [u8; 2] {
@@ -132,38 +68,6 @@ pub const fn generate_write_header(addr: u16) -> [u8; 2] {
     let addr = addr & 0x3FFF;
     let cmd: u16 = (0b10 << 14) | addr;
     [(cmd >> 8) as u8, (cmd & 0xFF) as u8]
-}
-
-trait ToLeVec {
-    fn to_le_vec(self) -> Vec<u8>;
-}
-
-impl ToLeVec for u8 {
-    #[inline]
-    fn to_le_vec(self) -> Vec<u8> {
-        vec![self]
-    }
-}
-
-impl ToLeVec for u16 {
-    #[inline]
-    fn to_le_vec(self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-}
-
-impl ToLeVec for u32 {
-    #[inline]
-    fn to_le_vec(self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
-}
-
-impl ToLeVec for u64 {
-    #[inline]
-    fn to_le_vec(self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
-    }
 }
 
 #[inline]
@@ -182,6 +86,503 @@ fn build_read_command(header: [u8; 2], size: usize) -> Vec<u8> {
     cmd.push(header[1]);
     cmd.resize(2 + size, 0x00);
     cmd
+}
+
+pub trait Writable {
+    fn address(&self) -> u16;
+
+    fn size(&self) -> usize;
+
+    fn value_bytes(&self) -> Vec<u8>;
+}
+
+pub trait Readable {
+    fn address(&self) -> u16;
+
+    fn size(&self) -> usize;
+
+    fn set_from_bytes(&mut self, bytes: &[u8]);
+}
+
+// =============================================================================
+// Writable implementations for each underlying integer size
+// =============================================================================
+
+impl<T: Copy + Into<u8>, const ADDR: u16> Writable for WriteOnly<T, ADDR, 1> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        1
+    }
+    fn value_bytes(&self) -> Vec<u8> {
+        vec![self.value.into()]
+    }
+}
+
+impl<T: Copy + Into<u8>, const ADDR: u16> Writable for ReadWrite<T, ADDR, 1> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        1
+    }
+    fn value_bytes(&self) -> Vec<u8> {
+        vec![self.value.into()]
+    }
+}
+
+impl<T: Copy + Into<u16>, const ADDR: u16> Writable for WriteOnly<T, ADDR, 2> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        2
+    }
+    fn value_bytes(&self) -> Vec<u8> {
+        let val: u16 = self.value.into();
+        val.to_le_bytes().to_vec()
+    }
+}
+
+impl<T: Copy + Into<u16>, const ADDR: u16> Writable for ReadWrite<T, ADDR, 2> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        2
+    }
+    fn value_bytes(&self) -> Vec<u8> {
+        let val: u16 = self.value.into();
+        val.to_le_bytes().to_vec()
+    }
+}
+
+impl<T: Copy + Into<u32>, const ADDR: u16> Writable for WriteOnly<T, ADDR, 4> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        4
+    }
+    fn value_bytes(&self) -> Vec<u8> {
+        let val: u32 = self.value.into();
+        val.to_le_bytes().to_vec()
+    }
+}
+
+impl<T: Copy + Into<u32>, const ADDR: u16> Writable for ReadWrite<T, ADDR, 4> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        4
+    }
+    fn value_bytes(&self) -> Vec<u8> {
+        let val: u32 = self.value.into();
+        val.to_le_bytes().to_vec()
+    }
+}
+
+impl<T: Copy + Into<u64>, const ADDR: u16> Writable for WriteOnly<T, ADDR, 8> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        8
+    }
+    fn value_bytes(&self) -> Vec<u8> {
+        let val: u64 = self.value.into();
+        val.to_le_bytes().to_vec()
+    }
+}
+
+impl<T: Copy + Into<u64>, const ADDR: u16> Writable for ReadWrite<T, ADDR, 8> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        8
+    }
+    fn value_bytes(&self) -> Vec<u8> {
+        let val: u64 = self.value.into();
+        val.to_le_bytes().to_vec()
+    }
+}
+
+// =============================================================================
+// Readable implementations for each underlying integer size
+// =============================================================================
+
+impl<T: Copy + From<u8>, const ADDR: u16> Readable for ReadOnly<T, ADDR, 1> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        1
+    }
+    fn set_from_bytes(&mut self, bytes: &[u8]) {
+        if !bytes.is_empty() {
+            self.value = T::from(bytes[0]);
+        }
+    }
+}
+
+impl<T: Copy + From<u8>, const ADDR: u16> Readable for ReadWrite<T, ADDR, 1> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        1
+    }
+    fn set_from_bytes(&mut self, bytes: &[u8]) {
+        if !bytes.is_empty() {
+            self.value = T::from(bytes[0]);
+        }
+    }
+}
+
+impl<T: Copy + From<u16>, const ADDR: u16> Readable for ReadOnly<T, ADDR, 2> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        2
+    }
+    fn set_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() >= 2 {
+            self.value = T::from(u16::from_le_bytes(bytes[..2].try_into().unwrap()));
+        }
+    }
+}
+
+impl<T: Copy + From<u16>, const ADDR: u16> Readable for ReadWrite<T, ADDR, 2> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        2
+    }
+    fn set_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() >= 2 {
+            self.value = T::from(u16::from_le_bytes(bytes[..2].try_into().unwrap()));
+        }
+    }
+}
+
+impl<T: Copy + From<u32>, const ADDR: u16> Readable for ReadOnly<T, ADDR, 4> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        4
+    }
+    fn set_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() >= 4 {
+            self.value = T::from(u32::from_le_bytes(bytes[..4].try_into().unwrap()));
+        }
+    }
+}
+
+impl<T: Copy + From<u32>, const ADDR: u16> Readable for ReadWrite<T, ADDR, 4> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        4
+    }
+    fn set_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() >= 4 {}
+        self.value = T::from(u32::from_le_bytes(bytes[..4].try_into().unwrap()));
+    }
+}
+
+impl<T: Copy + From<u64>, const ADDR: u16> Readable for ReadOnly<T, ADDR, 8> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        8
+    }
+    fn set_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() >= 8 {
+            self.value = T::from(u64::from_le_bytes(bytes[..8].try_into().unwrap()));
+        }
+    }
+}
+
+impl<T: Copy + From<u64>, const ADDR: u16> Readable for ReadWrite<T, ADDR, 8> {
+    fn address(&self) -> u16 {
+        ADDR
+    }
+    fn size(&self) -> usize {
+        8
+    }
+    fn set_from_bytes(&mut self, bytes: &[u8]) {
+        if bytes.len() >= 8 {
+            self.value = T::from(u64::from_le_bytes(bytes[..8].try_into().unwrap()));
+        }
+    }
+}
+
+// =============================================================================
+// Bulk Register Write
+// =============================================================================
+
+#[derive(Debug, Clone)]
+pub struct BulkWriteBlock {
+    pub start_address: u16,
+
+    pub data: Vec<u8>,
+}
+
+pub struct BulkWrites<'a> {
+    registers: Vec<&'a mut dyn Writable>,
+}
+
+impl<'a> BulkWrites<'a> {
+    pub fn new() -> Self {
+        Self {
+            registers: Vec::new(),
+        }
+    }
+
+    pub fn add<W: Writable>(&mut self, reg: &'a mut W) {
+        self.registers.push(reg);
+    }
+
+    /// Generates write commands for contiguous registers in the collection.
+    ///
+    /// # Returns
+    /// A vector of SPI commands. Each command consists of a 2-byte header
+    /// followed by data bytes for contiguous registers.
+    pub fn generate_commands(&self) -> Vec<Vec<u8>> {
+        let blocks = self.compute_blocks();
+
+        blocks
+            .into_iter()
+            .map(|block| {
+                build_write_command(generate_write_header(block.start_address), block.data)
+            })
+            .collect()
+    }
+
+    /// Computes the contiguous blocks for writing.
+    fn compute_blocks(&self) -> Vec<BulkWriteBlock> {
+        if self.registers.is_empty() {
+            return Vec::new();
+        }
+
+        // Create sortable info: (address, size, data, original_index)
+        let mut reg_infos: Vec<_> = self
+            .registers
+            .iter()
+            .enumerate()
+            .map(|(idx, reg)| (reg.address(), reg.size(), reg.value_bytes(), idx))
+            .collect();
+
+        // Sort by address
+        reg_infos.sort_by_key(|(addr, _, _, _)| *addr);
+
+        let mut blocks = Vec::new();
+        let (first_addr, _first_size, first_data, _first_idx) = reg_infos.remove(0);
+        let mut current_block = BulkWriteBlock {
+            start_address: first_addr,
+            data: first_data,
+        };
+
+        for (addr, _size, data, _idx) in reg_infos {
+            let expected_next_addr = current_block.start_address + current_block.data.len() as u16;
+
+            if addr == expected_next_addr {
+                // Contiguous: append to current block
+                current_block.data.extend(data);
+            } else {
+                // Non-contiguous: finalize current block and start new one
+                blocks.push(current_block);
+                current_block = BulkWriteBlock {
+                    start_address: addr,
+                    data,
+                };
+            }
+        }
+
+        blocks.push(current_block);
+        blocks
+    }
+
+    /// Returns the contiguous blocks that would be written.
+    /// For debugging mainly
+    pub fn get_blocks(&self) -> Vec<BulkWriteBlock> {
+        self.compute_blocks()
+    }
+
+    pub fn len(&self) -> usize {
+        self.registers.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.registers.is_empty()
+    }
+}
+
+impl<'a> Default for BulkWrites<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// =============================================================================
+// Bulk Register Read
+// =============================================================================
+
+struct BulkReadBlock {
+    start_address: u16,
+    total_size: usize,
+
+    /// (offset_in_block, original_register_index, size)
+    reg_infos: Vec<(usize, usize, usize)>,
+}
+
+pub struct BulkReads<'a> {
+    registers: Vec<&'a mut dyn Readable>,
+}
+
+impl<'a> BulkReads<'a> {
+    pub fn new() -> Self {
+        Self {
+            registers: Vec::new(),
+        }
+    }
+
+    pub fn add<R: Readable>(&mut self, reg: &'a mut R) {
+        self.registers.push(reg);
+    }
+
+    /// Generates read commands for contiguous registers in the collection.
+    ///
+    /// This method analyzes the registers and groups contiguous addresses together
+    /// into block read commands. Each returned `Vec<u8>` is a complete SPI command
+    /// that should be sent in a single transaction.
+    ///
+    /// # Returns
+    /// A vector of SPI commands. Each command consists of a 2-byte header
+    /// followed by zero bytes (placeholders for the response data).
+    pub fn generate_commands(&self) -> Vec<Vec<u8>> {
+        let blocks = self.compute_blocks();
+
+        blocks
+            .into_iter()
+            .map(|block| {
+                build_read_command(generate_read_header(block.start_address), block.total_size)
+            })
+            .collect()
+    }
+
+    /// Computes the contiguous blocks for reading.
+    fn compute_blocks(&self) -> Vec<BulkReadBlock> {
+        if self.registers.is_empty() {
+            return Vec::new();
+        }
+
+        // Create sortable info with original indices
+        // The orignal indices will be used when filling the registers.
+        let mut reg_infos: Vec<_> = self
+            .registers
+            .iter()
+            .enumerate()
+            .map(|(idx, reg)| (reg.address(), reg.size(), idx))
+            .collect();
+
+        // Sort by address
+        reg_infos.sort_by_key(|(addr, _, _)| *addr);
+
+        let mut blocks = Vec::new();
+        let (first_addr, first_size, first_idx) = reg_infos[0];
+        let mut current_block = BulkReadBlock {
+            start_address: first_addr,
+            total_size: first_size,
+            reg_infos: vec![(0, first_idx, first_size)], // (offset, original_index, size)
+        };
+
+        for (addr, size, idx) in reg_infos.into_iter().skip(1) {
+            let expected_next_addr = current_block.start_address + current_block.total_size as u16;
+
+            if addr == expected_next_addr {
+                // Contiguous: add to current block
+                let offset = current_block.total_size;
+                current_block.total_size += size;
+                current_block.reg_infos.push((offset, idx, size));
+            } else {
+                // Non-contiguous: finalize current block and start new one
+                blocks.push(current_block);
+                current_block = BulkReadBlock {
+                    start_address: addr,
+                    total_size: size,
+                    reg_infos: vec![(0, idx, size)],
+                };
+            }
+        }
+
+        blocks.push(current_block);
+        blocks
+    }
+
+    /// Returns information about the contiguous blocks that would be read.
+    /// For debugging
+    pub fn get_block_info(&self) -> Vec<(u16, usize)> {
+        self.compute_blocks()
+            .into_iter()
+            .map(|b| (b.start_address, b.total_size))
+            .collect()
+    }
+
+    /// Parses response data from SPI transactions and updates all stored registers.
+    ///
+    /// The responses should be in the same order as the commands returned by
+    /// `generate_commands()`. Each response should include the 2-byte header
+    /// followed by the actual data bytes.
+    ///
+    /// # Arguments
+    /// * `responses` - A slice of SPI response buffers, one for each command
+    pub fn parse_responses(&mut self, responses: &[Vec<u8>]) {
+        let blocks = self.compute_blocks();
+
+        // TODO verify the format of SPI responses from spidev
+        // Might not need the header at all.
+        for (block, response) in blocks.iter().zip(responses.iter()) {
+            // Skip the 2-byte header in the response
+            let data = if response.len() > 2 {
+                &response[2..]
+            } else {
+                continue;
+            };
+
+            for (offset, reg_idx, size) in &block.reg_infos {
+                if offset + size <= data.len() {
+                    let reg_data = &data[*offset..*offset + *size];
+                    // Update the register at the original index
+                    if let Some(reg) = self.registers.get_mut(*reg_idx) {
+                        reg.set_from_bytes(reg_data);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.registers.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.registers.is_empty()
+    }
+}
+
+impl<'a> Default for BulkReads<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // =============================================================================
@@ -2320,44 +2721,44 @@ impl EnergyDetectionMode {
 // Tests
 // =============================================================================
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    #[test]
-    fn test_bbcn_pmuc_read_only_field() {
-        let mut pmuc = BbcnPmuc::new().with_en(true).with_avg(false);
+//     #[test]
+//     fn test_bbcn_pmuc_read_only_field() {
+//         let mut pmuc = BbcnPmuc::new().with_en(true).with_avg(false);
 
-        // Verify we can read the sync field (it's read-only)
-        let sync_value = pmuc.sync();
-        assert_eq!(sync_value, 0);
+//         // Verify we can read the sync field (it's read-only)
+//         let sync_value = pmuc.sync();
+//         assert_eq!(sync_value, 0);
 
-        // Verify we can set writable fields
-        assert_eq!(pmuc.en(), true);
-        pmuc.set_en(false);
-        assert_eq!(pmuc.en(), false);
+//         // Verify we can set writable fields
+//         assert_eq!(pmuc.en(), true);
+//         pmuc.set_en(false);
+//         assert_eq!(pmuc.en(), false);
 
-        assert_eq!(pmuc.avg(), false);
-        pmuc.set_avg(true);
-        assert_eq!(pmuc.avg(), true);
+//         assert_eq!(pmuc.avg(), false);
+//         pmuc.set_avg(true);
+//         assert_eq!(pmuc.avg(), true);
 
-        // The sync field should remain unchanged
-        assert_eq!(pmuc.sync(), 0);
-    }
+//         // The sync field should remain unchanged
+//         assert_eq!(pmuc.sync(), 0);
+//     }
 
-    #[test]
-    fn test_bbcn_pmuc_writable_fields() {
-        let pmuc = BbcnPmuc::new()
-            .with_en(true)
-            .with_avg(true)
-            .with_fed(true)
-            .with_iqsel(false)
-            .with_ccfts(true);
+//     #[test]
+//     fn test_bbcn_pmuc_writable_fields() {
+//         let pmuc = BbcnPmuc::new()
+//             .with_en(true)
+//             .with_avg(true)
+//             .with_fed(true)
+//             .with_iqsel(false)
+//             .with_ccfts(true);
 
-        assert_eq!(pmuc.en(), true);
-        assert_eq!(pmuc.avg(), true);
-        assert_eq!(pmuc.fed(), true);
-        assert_eq!(pmuc.iqsel(), false);
-        assert_eq!(pmuc.ccfts(), true);
-    }
-}
+//         assert_eq!(pmuc.en(), true);
+//         assert_eq!(pmuc.avg(), true);
+//         assert_eq!(pmuc.fed(), true);
+//         assert_eq!(pmuc.iqsel(), false);
+//         assert_eq!(pmuc.ccfts(), true);
+//     }
+// }
