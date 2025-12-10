@@ -300,8 +300,9 @@ impl<T: Copy + From<u32>, const ADDR: u16> Readable for ReadWrite<T, ADDR, 4> {
         4
     }
     fn set_from_bytes(&mut self, bytes: &[u8]) {
-        if bytes.len() >= 4 {}
+        if bytes.len() >= 4 {
         self.value = T::from(u32::from_le_bytes(bytes[..4].try_into().unwrap()));
+        }
     }
 }
 
