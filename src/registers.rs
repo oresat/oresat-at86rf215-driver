@@ -94,6 +94,10 @@ pub trait Writable {
     fn size(&self) -> usize;
 
     fn value_bytes(&self) -> Vec<u8>;
+
+    fn write_command(&self) -> Vec<u8> {
+        build_write_command(generate_write_header(self.address()), self.value_bytes())
+    }
 }
 
 pub trait Readable {
@@ -102,6 +106,10 @@ pub trait Readable {
     fn size(&self) -> usize;
 
     fn set_from_bytes(&mut self, bytes: &[u8]);
+
+    fn read_command(&self) -> Vec<u8> {
+        build_read_command(generate_read_header(self.address()), self.size())
+    }
 }
 
 // =============================================================================
@@ -2721,44 +2729,44 @@ impl EnergyDetectionMode {
 // Tests
 // =============================================================================
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     #[test]
-//     fn test_bbcn_pmuc_read_only_field() {
-//         let mut pmuc = BbcnPmuc::new().with_en(true).with_avg(false);
+    #[test]
+    fn test_bbcn_pmuc_read_only_field() {
+        let mut pmuc = BbcnPmuc::new().with_en(true).with_avg(false);
 
-//         // Verify we can read the sync field (it's read-only)
-//         let sync_value = pmuc.sync();
-//         assert_eq!(sync_value, 0);
+        // Verify we can read the sync field (it's read-only)
+        let sync_value = pmuc.sync();
+        assert_eq!(sync_value, 0);
 
-//         // Verify we can set writable fields
-//         assert_eq!(pmuc.en(), true);
-//         pmuc.set_en(false);
-//         assert_eq!(pmuc.en(), false);
+        // Verify we can set writable fields
+        assert_eq!(pmuc.en(), true);
+        pmuc.set_en(false);
+        assert_eq!(pmuc.en(), false);
 
-//         assert_eq!(pmuc.avg(), false);
-//         pmuc.set_avg(true);
-//         assert_eq!(pmuc.avg(), true);
+        assert_eq!(pmuc.avg(), false);
+        pmuc.set_avg(true);
+        assert_eq!(pmuc.avg(), true);
 
-//         // The sync field should remain unchanged
-//         assert_eq!(pmuc.sync(), 0);
-//     }
+        // The sync field should remain unchanged
+        assert_eq!(pmuc.sync(), 0);
+    }
 
-//     #[test]
-//     fn test_bbcn_pmuc_writable_fields() {
-//         let pmuc = BbcnPmuc::new()
-//             .with_en(true)
-//             .with_avg(true)
-//             .with_fed(true)
-//             .with_iqsel(false)
-//             .with_ccfts(true);
+    #[test]
+    fn test_bbcn_pmuc_writable_fields() {
+        let pmuc = BbcnPmuc::new()
+            .with_en(true)
+            .with_avg(true)
+            .with_fed(true)
+            .with_iqsel(false)
+            .with_ccfts(true);
 
-//         assert_eq!(pmuc.en(), true);
-//         assert_eq!(pmuc.avg(), true);
-//         assert_eq!(pmuc.fed(), true);
-//         assert_eq!(pmuc.iqsel(), false);
-//         assert_eq!(pmuc.ccfts(), true);
-//     }
-// }
+        assert_eq!(pmuc.en(), true);
+        assert_eq!(pmuc.avg(), true);
+        assert_eq!(pmuc.fed(), true);
+        assert_eq!(pmuc.iqsel(), false);
+        assert_eq!(pmuc.ccfts(), true);
+    }
+}
