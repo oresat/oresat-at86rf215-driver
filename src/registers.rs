@@ -1,5 +1,5 @@
 //! AT86RF215 Register Definitions
-
+use serde::{Deserialize, Serialize};
 use bitfield_struct::bitfield;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2584,7 +2584,7 @@ impl DevicePartNumber {
 }
 
 /// Chip Reset Commands
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum ChipResetCmd {
     Reset = 0x07,
@@ -2635,7 +2635,7 @@ impl TransceiverState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TransceiverCmd {
     Nop = 0,
@@ -2667,7 +2667,7 @@ impl TransceiverCmd {
 }
 
 /// Chip Operating Modes
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum ChipMode {
     /// RF enabled, both basebands enabled, I/Q IF disabled
@@ -2697,7 +2697,7 @@ impl ChipMode {
 }
 
 /// Energy Detection Modes
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum EnergyDetectionMode {
     /// Automatic trigger when AGC held

@@ -1,4 +1,5 @@
 use crate::registers::*;
+use crate::config::*;
 
 #[derive(Debug, Clone)]
 pub struct Radio {
@@ -506,6 +507,218 @@ impl Radio {
             bbc1_pmuq: ReadOnly::new(BbcnPmuq::new()),
             bbc1_cntc: ReadWrite::new(BbcnCntc::new()),
             bbc1_cnt: ReadOnly::new(BbcnCnt::new()),
+        }
+    }
+
+    pub fn apply_config(&mut self, config: &RadioConfig) {
+        self.rf_cfg.value = RfCfg::from(&config.rf_cfg);
+        self.rf_clko.value = RfClko::from(&config.rf_clko);
+        self.rf_bmdvc.value = RfBmdvc::from(&config.rf_bmdvc);
+        self.rf_xoc.value = RfXoc::from(&config.rf_xoc);
+        self.rf_iqifc0.value = RfIqifc0::from(&config.rf_iqifc0);
+        self.rf_iqifc1.value = RfIqifc1::from(&config.rf_iqifc1);
+
+        self.rf09_auxs.value = RfnAuxs::from(&config.rf09_auxs);
+        self.rf09_cs.value = RfnCs::from(&config.rf09_cs);
+        self.rf09_ccf0.value = RfnCcf0::from(&config.rf09_ccf0);
+        self.rf09_cn.value = RfnCn::from(&config.rf09_cn);
+        self.rf09_rxbwc.value = RfnRxbwc::from(&config.rf09_rxbwc);
+        self.rf09_rxdfe.value = RfnRxdfe::from(&config.rf09_rxdfe);
+        self.rf09_agcc.value = RfnAgcc::from(&config.rf09_agcc);
+        self.rf09_agcs.value = RfnAgcs::from(&config.rf09_agcs);
+        self.rf09_txcutc.value = RfnTxcutc::from(&config.rf09_txcutc);
+        self.rf09_txdfe.value = RfnTxdfe::from(&config.rf09_txdfe);
+        self.rf09_pac.value = RfnPac::from(&config.rf09_pac);
+        self.rf09_padfe.value = RfnPadfe::from(&config.rf09_padfe);
+        self.rf09_pll.value = RfnPll::from(&config.rf09_pll);
+
+        self.rf24_auxs.value = RfnAuxs::from(&config.rf24_auxs);
+        self.rf24_cs.value = RfnCs::from(&config.rf24_cs);
+        self.rf24_ccf0.value = RfnCcf0::from(&config.rf24_ccf0);
+        self.rf24_cn.value = RfnCn::from(&config.rf24_cn);
+        self.rf24_rxbwc.value = RfnRxbwc::from(&config.rf24_rxbwc);
+        self.rf24_rxdfe.value = RfnRxdfe::from(&config.rf24_rxdfe);
+        self.rf24_agcc.value = RfnAgcc::from(&config.rf24_agcc);
+        self.rf24_agcs.value = RfnAgcs::from(&config.rf24_agcs);
+        self.rf24_txcutc.value = RfnTxcutc::from(&config.rf24_txcutc);
+        self.rf24_txdfe.value = RfnTxdfe::from(&config.rf24_txdfe);
+        self.rf24_pac.value = RfnPac::from(&config.rf24_pac);
+        self.rf24_padfe.value = RfnPadfe::from(&config.rf24_padfe);
+        self.rf24_pll.value = RfnPll::from(&config.rf24_pll);
+
+        // BBC0
+        self.bbc0_ofdmphrtx.value = BbcnOfdmphrtx::from(&config.bbc0_ofdmphrtx);
+        self.bbc0_ofdmc.value = BbcnOfdmc::from(&config.bbc0_ofdmc);
+        self.bbc0_ofdmsw.value = BbcnOfdmsw::from(&config.bbc0_ofdmsw);
+        self.bbc0_oqpskc0.value = BbcnOqpskc0::from(&config.bbc0_oqpskc0);
+        self.bbc0_oqpskc1.value = BbcnOqpskc1::from(&config.bbc0_oqpskc1);
+        self.bbc0_oqpskc2.value = BbcnOqpskc2::from(&config.bbc0_oqpskc2);
+        self.bbc0_oqpskc3.value = BbcnOqpskc3::from(&config.bbc0_oqpskc3);
+        self.bbc0_oqpskphrtx.value = BbcnOqpskphrtx::from(&config.bbc0_oqpskphrtx);
+        self.bbc0_afc0.value = BbcnAfc0::from(&config.bbc0_afc0);
+        self.bbc0_afc1.value = BbcnAfc1::from(&config.bbc0_afc1);
+        self.bbc0_afftm.value = BbcnAfftm::from(&config.bbc0_afftm);
+        self.bbc0_affvm.value = BbcnAffvm::from(&config.bbc0_affvm);
+        self.bbc0_amcs.value = BbcnAmcs::from(&config.bbc0_amcs);
+        self.bbc0_amedt.value = BbcnAmedt::from(&config.bbc0_amedt);
+        self.bbc0_amaackpd.value = BbcnAmaackpd::from(&config.bbc0_amaackpd);
+        self.bbc0_amaackt.value = BbcnAmaackt::from(&config.bbc0_amaackt);
+        self.bbc0_fskc0.value = BbcnFskc0::from(&config.bbc0_fskc0);
+        self.bbc0_fskc1.value = BbcnFskc1::from(&config.bbc0_fskc1);
+        self.bbc0_fskc2.value = BbcnFskc2::from(&config.bbc0_fskc2);
+        self.bbc0_fskc3.value = BbcnFskc3::from(&config.bbc0_fskc3);
+        self.bbc0_fskc4.value = BbcnFskc4::from(&config.bbc0_fskc4);
+        self.bbc0_fskpll.value = BbcnFskpll::from(&config.bbc0_fskpll);
+        self.bbc0_fsksfd0.value = BbcnFsksfd::from(&config.bbc0_fsksfd0);
+        self.bbc0_fsksfd1.value = BbcnFsksfd::from(&config.bbc0_fsksfd1);
+        self.bbc0_fskphrtx.value = BbcnFskphrtx::from(&config.bbc0_fskphrtx);
+        self.bbc0_fskrpc.value = BbcnFskrpc::from(&config.bbc0_fskrpc);
+        self.bbc0_fskrpcont.value = BbcnFskrpcont::from(&config.bbc0_fskrpcont);
+        self.bbc0_fskrpcofft.value = BbcnFskrpcofft::from(&config.bbc0_fskrpcofft);
+        self.bbc0_fskdm.value = BbcnFskdm::from(&config.bbc0_fskdm);
+        self.bbc0_fskpe0.value = BbcnFskpe::from(&config.bbc0_fskpe0);
+        self.bbc0_fskpe1.value = BbcnFskpe::from(&config.bbc0_fskpe1);
+        self.bbc0_fskpe2.value = BbcnFskpe::from(&config.bbc0_fskpe2);
+
+        // BBC1
+        self.bbc1_ofdmphrtx.value = BbcnOfdmphrtx::from(&config.bbc1_ofdmphrtx);
+        self.bbc1_ofdmc.value = BbcnOfdmc::from(&config.bbc1_ofdmc);
+        self.bbc1_ofdmsw.value = BbcnOfdmsw::from(&config.bbc1_ofdmsw);
+        self.bbc1_oqpskc0.value = BbcnOqpskc0::from(&config.bbc1_oqpskc0);
+        self.bbc1_oqpskc1.value = BbcnOqpskc1::from(&config.bbc1_oqpskc1);
+        self.bbc1_oqpskc2.value = BbcnOqpskc2::from(&config.bbc1_oqpskc2);
+        self.bbc1_oqpskc3.value = BbcnOqpskc3::from(&config.bbc1_oqpskc3);
+        self.bbc1_oqpskphrtx.value = BbcnOqpskphrtx::from(&config.bbc1_oqpskphrtx);
+        self.bbc1_afc0.value = BbcnAfc0::from(&config.bbc1_afc0);
+        self.bbc1_afc1.value = BbcnAfc1::from(&config.bbc1_afc1);
+        self.bbc1_afftm.value = BbcnAfftm::from(&config.bbc1_afftm);
+        self.bbc1_affvm.value = BbcnAffvm::from(&config.bbc1_affvm);
+        self.bbc1_amcs.value = BbcnAmcs::from(&config.bbc1_amcs);
+        self.bbc1_amedt.value = BbcnAmedt::from(&config.bbc1_amedt);
+        self.bbc1_amaackpd.value = BbcnAmaackpd::from(&config.bbc1_amaackpd);
+        self.bbc1_amaackt.value = BbcnAmaackt::from(&config.bbc1_amaackt);
+        self.bbc1_fskc0.value = BbcnFskc0::from(&config.bbc1_fskc0);
+        self.bbc1_fskc1.value = BbcnFskc1::from(&config.bbc1_fskc1);
+        self.bbc1_fskc2.value = BbcnFskc2::from(&config.bbc1_fskc2);
+        self.bbc1_fskc3.value = BbcnFskc3::from(&config.bbc1_fskc3);
+        self.bbc1_fskc4.value = BbcnFskc4::from(&config.bbc1_fskc4);
+        self.bbc1_fskpll.value = BbcnFskpll::from(&config.bbc1_fskpll);
+        self.bbc1_fsksfd0.value = BbcnFsksfd::from(&config.bbc1_fsksfd0);
+        self.bbc1_fsksfd1.value = BbcnFsksfd::from(&config.bbc1_fsksfd1);
+        self.bbc1_fskphrtx.value = BbcnFskphrtx::from(&config.bbc1_fskphrtx);
+        self.bbc1_fskrpc.value = BbcnFskrpc::from(&config.bbc1_fskrpc);
+        self.bbc1_fskrpcont.value = BbcnFskrpcont::from(&config.bbc1_fskrpcont);
+        self.bbc1_fskrpcofft.value = BbcnFskrpcofft::from(&config.bbc1_fskrpcofft);
+        self.bbc1_fskdm.value = BbcnFskdm::from(&config.bbc1_fskdm);
+        self.bbc1_fskpe0.value = BbcnFskpe::from(&config.bbc1_fskpe0);
+        self.bbc1_fskpe1.value = BbcnFskpe::from(&config.bbc1_fskpe1);
+        self.bbc1_fskpe2.value = BbcnFskpe::from(&config.bbc1_fskpe2);
+    }
+
+    pub fn to_config(&self) -> RadioConfig {
+        RadioConfig {
+            rf_cfg: RfCfgConfig::from(&self.rf_cfg.value),
+            rf_clko: RfClkoConfig::from(&self.rf_clko.value),
+            rf_bmdvc: RfBmdvcConfig::from(&self.rf_bmdvc.value),
+            rf_xoc: RfXocConfig::from(&self.rf_xoc.value),
+            rf_iqifc0: RfIqifc0Config::from(&self.rf_iqifc0.value),
+            rf_iqifc1: RfIqifc1Config::from(&self.rf_iqifc1.value),
+
+            rf09_auxs: RfnAuxsConfig::from(&self.rf09_auxs.value),
+            rf09_cs: RfnCsConfig::from(&self.rf09_cs.value),
+            rf09_ccf0: RfnCcf0Config::from(&self.rf09_ccf0.value),
+            rf09_cn: RfnCnConfig::from(&self.rf09_cn.value),
+            rf09_rxbwc: RfnRxbwcConfig::from(&self.rf09_rxbwc.value),
+            rf09_rxdfe: RfnRxdfeConfig::from(&self.rf09_rxdfe.value),
+            rf09_agcc: RfnAgccConfig::from(&self.rf09_agcc.value),
+            rf09_agcs: RfnAgcsConfig::from(&self.rf09_agcs.value),
+            rf09_txcutc: RfnTxcutcConfig::from(&self.rf09_txcutc.value),
+            rf09_txdfe: RfnTxdfeConfig::from(&self.rf09_txdfe.value),
+            rf09_pac: RfnPacConfig::from(&self.rf09_pac.value),
+            rf09_padfe: RfnPadfeConfig::from(&self.rf09_padfe.value),
+            rf09_pll: RfnPllConfig::from(&self.rf09_pll.value),
+
+            rf24_auxs: RfnAuxsConfig::from(&self.rf24_auxs.value),
+            rf24_cs: RfnCsConfig::from(&self.rf24_cs.value),
+            rf24_ccf0: RfnCcf0Config::from(&self.rf24_ccf0.value),
+            rf24_cn: RfnCnConfig::from(&self.rf24_cn.value),
+            rf24_rxbwc: RfnRxbwcConfig::from(&self.rf24_rxbwc.value),
+            rf24_rxdfe: RfnRxdfeConfig::from(&self.rf24_rxdfe.value),
+            rf24_agcc: RfnAgccConfig::from(&self.rf24_agcc.value),
+            rf24_agcs: RfnAgcsConfig::from(&self.rf24_agcs.value),
+            rf24_txcutc: RfnTxcutcConfig::from(&self.rf24_txcutc.value),
+            rf24_txdfe: RfnTxdfeConfig::from(&self.rf24_txdfe.value),
+            rf24_pac: RfnPacConfig::from(&self.rf24_pac.value),
+            rf24_padfe: RfnPadfeConfig::from(&self.rf24_padfe.value),
+            rf24_pll: RfnPllConfig::from(&self.rf24_pll.value),
+
+            // BBC0
+            bbc0_ofdmphrtx: BbcnOfdmphrtxConfig::from(&self.bbc0_ofdmphrtx.value),
+            bbc0_ofdmc: BbcnOfdmcConfig::from(&self.bbc0_ofdmc.value),
+            bbc0_ofdmsw: BbcnOfdmswConfig::from(&self.bbc0_ofdmsw.value),
+            bbc0_oqpskc0: BbcnOqpskc0Config::from(&self.bbc0_oqpskc0.value),
+            bbc0_oqpskc1: BbcnOqpskc1Config::from(&self.bbc0_oqpskc1.value),
+            bbc0_oqpskc2: BbcnOqpskc2Config::from(&self.bbc0_oqpskc2.value),
+            bbc0_oqpskc3: BbcnOqpskc3Config::from(&self.bbc0_oqpskc3.value),
+            bbc0_oqpskphrtx: BbcnOqpskphrtxConfig::from(&self.bbc0_oqpskphrtx.value),
+            bbc0_afc0: BbcnAfc0Config::from(&self.bbc0_afc0.value),
+            bbc0_afc1: BbcnAfc1Config::from(&self.bbc0_afc1.value),
+            bbc0_afftm: BbcnAfftmConfig::from(&self.bbc0_afftm.value),
+            bbc0_affvm: BbcnAffvmConfig::from(&self.bbc0_affvm.value),
+            bbc0_amcs: BbcnAmcsConfig::from(&self.bbc0_amcs.value),
+            bbc0_amedt: BbcnAmedtConfig::from(&self.bbc0_amedt.value),
+            bbc0_amaackpd: BbcnAmaackpdConfig::from(&self.bbc0_amaackpd.value),
+            bbc0_amaackt: BbcnAmaacktConfig::from(&self.bbc0_amaackt.value),
+            bbc0_fskc0: BbcnFskc0Config::from(&self.bbc0_fskc0.value),
+            bbc0_fskc1: BbcnFskc1Config::from(&self.bbc0_fskc1.value),
+            bbc0_fskc2: BbcnFskc2Config::from(&self.bbc0_fskc2.value),
+            bbc0_fskc3: BbcnFskc3Config::from(&self.bbc0_fskc3.value),
+            bbc0_fskc4: BbcnFskc4Config::from(&self.bbc0_fskc4.value),
+            bbc0_fskpll: BbcnFskpllConfig::from(&self.bbc0_fskpll.value),
+            bbc0_fsksfd0: BbcnFsksfdConfig::from(&self.bbc0_fsksfd0.value),
+            bbc0_fsksfd1: BbcnFsksfdConfig::from(&self.bbc0_fsksfd1.value),
+            bbc0_fskphrtx: BbcnFskphrtxConfig::from(&self.bbc0_fskphrtx.value),
+            bbc0_fskrpc: BbcnFskrpcConfig::from(&self.bbc0_fskrpc.value),
+            bbc0_fskrpcont: BbcnFskrpcontConfig::from(&self.bbc0_fskrpcont.value),
+            bbc0_fskrpcofft: BbcnFskrpcofftConfig::from(&self.bbc0_fskrpcofft.value),
+            bbc0_fskdm: BbcnFskdmConfig::from(&self.bbc0_fskdm.value),
+            bbc0_fskpe0: BbcnFskpeConfig::from(&self.bbc0_fskpe0.value),
+            bbc0_fskpe1: BbcnFskpeConfig::from(&self.bbc0_fskpe1.value),
+            bbc0_fskpe2: BbcnFskpeConfig::from(&self.bbc0_fskpe2.value),
+
+            // BBC1
+            bbc1_ofdmphrtx: BbcnOfdmphrtxConfig::from(&self.bbc1_ofdmphrtx.value),
+            bbc1_ofdmc: BbcnOfdmcConfig::from(&self.bbc1_ofdmc.value),
+            bbc1_ofdmsw: BbcnOfdmswConfig::from(&self.bbc1_ofdmsw.value),
+            bbc1_oqpskc0: BbcnOqpskc0Config::from(&self.bbc1_oqpskc0.value),
+            bbc1_oqpskc1: BbcnOqpskc1Config::from(&self.bbc1_oqpskc1.value),
+            bbc1_oqpskc2: BbcnOqpskc2Config::from(&self.bbc1_oqpskc2.value),
+            bbc1_oqpskc3: BbcnOqpskc3Config::from(&self.bbc1_oqpskc3.value),
+            bbc1_oqpskphrtx: BbcnOqpskphrtxConfig::from(&self.bbc1_oqpskphrtx.value),
+            bbc1_afc0: BbcnAfc0Config::from(&self.bbc1_afc0.value),
+            bbc1_afc1: BbcnAfc1Config::from(&self.bbc1_afc1.value),
+            bbc1_afftm: BbcnAfftmConfig::from(&self.bbc1_afftm.value),
+            bbc1_affvm: BbcnAffvmConfig::from(&self.bbc1_affvm.value),
+            bbc1_amcs: BbcnAmcsConfig::from(&self.bbc1_amcs.value),
+            bbc1_amedt: BbcnAmedtConfig::from(&self.bbc1_amedt.value),
+            bbc1_amaackpd: BbcnAmaackpdConfig::from(&self.bbc1_amaackpd.value),
+            bbc1_amaackt: BbcnAmaacktConfig::from(&self.bbc1_amaackt.value),
+            bbc1_fskc0: BbcnFskc0Config::from(&self.bbc1_fskc0.value),
+            bbc1_fskc1: BbcnFskc1Config::from(&self.bbc1_fskc1.value),
+            bbc1_fskc2: BbcnFskc2Config::from(&self.bbc1_fskc2.value),
+            bbc1_fskc3: BbcnFskc3Config::from(&self.bbc1_fskc3.value),
+            bbc1_fskc4: BbcnFskc4Config::from(&self.bbc1_fskc4.value),
+            bbc1_fskpll: BbcnFskpllConfig::from(&self.bbc1_fskpll.value),
+            bbc1_fsksfd0: BbcnFsksfdConfig::from(&self.bbc1_fsksfd0.value),
+            bbc1_fsksfd1: BbcnFsksfdConfig::from(&self.bbc1_fsksfd1.value),
+            bbc1_fskphrtx: BbcnFskphrtxConfig::from(&self.bbc1_fskphrtx.value),
+            bbc1_fskrpc: BbcnFskrpcConfig::from(&self.bbc1_fskrpc.value),
+            bbc1_fskrpcont: BbcnFskrpcontConfig::from(&self.bbc1_fskrpcont.value),
+            bbc1_fskrpcofft: BbcnFskrpcofftConfig::from(&self.bbc1_fskrpcofft.value),
+            bbc1_fskdm: BbcnFskdmConfig::from(&self.bbc1_fskdm.value),
+            bbc1_fskpe0: BbcnFskpeConfig::from(&self.bbc1_fskpe0.value),
+            bbc1_fskpe1: BbcnFskpeConfig::from(&self.bbc1_fskpe1.value),
+            bbc1_fskpe2: BbcnFskpeConfig::from(&self.bbc1_fskpe2.value),
         }
     }
 }
