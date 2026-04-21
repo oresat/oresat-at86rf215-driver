@@ -557,8 +557,8 @@ impl<'a> BulkReads<'a> {
     pub fn parse_responses(&mut self, responses: &[Vec<u8>]) {
         let blocks = self.compute_blocks();
 
-        // TODO verify the format of SPI responses from spidev
-        // Might not need the header at all.
+        // SPI full-duplex: response mirrors the command length.
+        // Valid data starts at byte 2 (after the 2-byte address header).
         for (block, response) in blocks.iter().zip(responses.iter()) {
             // Skip the 2-byte header in the response
             let data = if response.len() > 2 {
@@ -2587,6 +2587,9 @@ impl DevicePartNumber {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum ChipResetCmd {
+    /// No operation (any value other than 0x07).
+    Nop = 0x00,
+    /// Trigger a complete chip reset.
     Reset = 0x07,
 }
 
@@ -2598,9 +2601,7 @@ impl ChipResetCmd {
     pub const fn from_bits(value: u8) -> Self {
         match value {
             0x07 => Self::Reset,
-            _ => Self::Reset,
-            // TODO check if Chip reset needs other enum fields
-            // I think it needs another entry for other to not match to Self::Reset
+            _ => Self::Nop,
         }
     }
 }
@@ -2743,13 +2744,13 @@ mod tests {
         assert_eq!(sync_value, 0);
 
         // Verify we can set writable fields
-        assert_eq!(pmuc.en(), true);
+        assert!(pmuc.en());
         pmuc.set_en(false);
-        assert_eq!(pmuc.en(), false);
+        assert!(!pmuc.en());
 
-        assert_eq!(pmuc.avg(), false);
+        assert!(!pmuc.avg());
         pmuc.set_avg(true);
-        assert_eq!(pmuc.avg(), true);
+        assert!(pmuc.avg());
 
         // The sync field should remain unchanged
         assert_eq!(pmuc.sync(), 0);
@@ -2764,10 +2765,22 @@ mod tests {
             .with_iqsel(false)
             .with_ccfts(true);
 
-        assert_eq!(pmuc.en(), true);
-        assert_eq!(pmuc.avg(), true);
-        assert_eq!(pmuc.fed(), true);
-        assert_eq!(pmuc.iqsel(), false);
-        assert_eq!(pmuc.ccfts(), true);
+        assert!(pmuc.en());
+        assert!(pmuc.avg());
+        assert!(pmuc.fed());
+        assert!(!pmuc.iqsel());
+        assert!(pmuc.ccfts());
+    }
+
+    #[test]
+    fn chip_reset_cmd_nop_default() {
+        // Only 0x07 maps to Reset; everything else is Nop.
+        assert_eq!(ChipResetCmd::from_bits(0x07), ChipResetCmd::Reset);
+        assert_eq!(ChipResetCmd::from_bits(0x00), ChipResetCmd::Nop);
+        assert_eq!(ChipResetCmd::from_bits(0x01), ChipResetCmd::Nop);
+        assert_eq!(ChipResetCmd::from_bits(0xFF), ChipResetCmd::Nop);
+        // Round-trip: Reset.into_bits() == 0x07
+        assert_eq!(ChipResetCmd::Reset.into_bits(), 0x07);
+        assert_eq!(ChipResetCmd::Nop.into_bits(), 0x00);
     }
 }

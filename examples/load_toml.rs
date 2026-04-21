@@ -1,9 +1,7 @@
-use oresat_at86rf215_driver::radio::*;
-use oresat_at86rf215_driver::config::*;
-use toml;
 use clap::Parser;
+use oresat_at86rf215_driver::config::*;
+use oresat_at86rf215_driver::radio::*;
 use std::fs::read_to_string;
-
 
 #[derive(Parser)]
 struct Args {

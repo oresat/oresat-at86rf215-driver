@@ -1,10 +1,7 @@
 use oresat_at86rf215_driver::radio::*;
 use oresat_at86rf215_driver::registers::*;
-use toml;
-
 
 fn main() {
-
     // Radio initialization (from simple_radio example)
     let mut radio = Radio::new();
     radio.rf_cfg.value = radio.rf_cfg.value.with_drv(3).with_irqmm(true);

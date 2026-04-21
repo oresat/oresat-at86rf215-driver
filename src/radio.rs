@@ -46,6 +46,7 @@ pub struct Radio {
     pub rf09_rxdfe: ReadWrite<RfnRxdfe, 0x010A, 1>,
     pub rf09_agcc: ReadWrite<RfnAgcc, 0x010B, 1>,
     pub rf09_agcs: ReadWrite<RfnAgcs, 0x010C, 1>,
+    pub rf09_rssi: ReadOnly<RfnRssi, 0x010D, 1>,
 
     // Energy detection
     pub rf09_edc: ReadWrite<RfnEdc, 0x010E, 1>,
@@ -94,6 +95,7 @@ pub struct Radio {
     pub rf24_rxdfe: ReadWrite<RfnRxdfe, 0x020A, 1>,
     pub rf24_agcc: ReadWrite<RfnAgcc, 0x020B, 1>,
     pub rf24_agcs: ReadWrite<RfnAgcs, 0x020C, 1>,
+    pub rf24_rssi: ReadOnly<RfnRssi, 0x020D, 1>,
 
     // Energy detection
     pub rf24_edc: ReadWrite<RfnEdc, 0x020E, 1>,
@@ -339,6 +341,7 @@ impl Radio {
             rf09_rxdfe: ReadWrite::new(RfnRxdfe::new()),
             rf09_agcc: ReadWrite::new(RfnAgcc::new()),
             rf09_agcs: ReadWrite::new(RfnAgcs::new()),
+            rf09_rssi: ReadOnly::new(RfnRssi::new()),
             rf09_edc: ReadWrite::new(RfnEdc::new()),
             rf09_edd: ReadWrite::new(RfnEdd::new()),
             rf09_edv: ReadOnly::new(RfnEdv::new()),
@@ -367,6 +370,7 @@ impl Radio {
             rf24_rxdfe: ReadWrite::new(RfnRxdfe::new()),
             rf24_agcc: ReadWrite::new(RfnAgcc::new()),
             rf24_agcs: ReadWrite::new(RfnAgcs::new()),
+            rf24_rssi: ReadOnly::new(RfnRssi::new()),
             rf24_edc: ReadWrite::new(RfnEdc::new()),
             rf24_edd: ReadWrite::new(RfnEdd::new()),
             rf24_edv: ReadOnly::new(RfnEdv::new()),

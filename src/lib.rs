@@ -1,3 +1,14 @@
+pub mod comm;
+pub mod cpuload;
+pub mod ds;
 pub mod radio;
 pub mod registers;
 pub mod config;
+pub mod freq;
+pub mod od;
+pub mod spi;
+pub mod stats;
+pub mod typestate;
+pub mod units;
+#[cfg(feature = "tui")]
+pub mod tui;
