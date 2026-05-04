@@ -1,6 +1,6 @@
 [package]
 name = "oresat-at86rf215-driver"
-version = "0.1.0"
+version = "0.4.1"
 edition = "2024"
 
 [dependencies]
@@ -27,4 +27,8 @@ required-features = ["tui"]
 
 [[example]]
 name = "live"
+required-features = ["tui"]
+
+[[example]]
+name = "cw_uhf_tui"
 required-features = ["tui"]

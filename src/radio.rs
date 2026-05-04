@@ -27,8 +27,11 @@ pub struct Radio {
     // RF09 Sub-1GHz Radio Registers (0x0100-0x0128)
     // =========================================================================
 
-    // Status and interrupts
-    pub rf09_irqs: ReadOnly<RfnIrqs, 0x0100, 1>,
+    // Status and interrupts.
+    // IRQS is at the *global* low address space (0x00..0x03), one byte per
+    // block — reading it auto-clears the bits. IRQM is the per-block mask
+    // at 0x100/0x200/0x300/0x400.
+    pub rf09_irqs: ReadOnly<RfnIrqs, 0x0000, 1>,
     pub rf09_irqm: ReadWrite<RfnIrqm, 0x0100, 1>,
     pub rf09_state: ReadOnly<RfnState, 0x0102, 1>,
 
@@ -76,8 +79,8 @@ pub struct Radio {
     // RF24 2.4GHz Radio Registers (0x0200-0x0228)
     // =========================================================================
 
-    // Status and interrupts
-    pub rf24_irqs: ReadOnly<RfnIrqs, 0x0200, 1>,
+    // Status and interrupts (see RF09 above for the address-space split).
+    pub rf24_irqs: ReadOnly<RfnIrqs, 0x0001, 1>,
     pub rf24_irqm: ReadWrite<RfnIrqm, 0x0200, 1>,
     pub rf24_state: ReadOnly<RfnState, 0x0202, 1>,
 
@@ -125,8 +128,9 @@ pub struct Radio {
     // BBC0 Sub-1GHz Baseband Registers (0x0300-0x0394)
     // =========================================================================
 
-    // Status and interrupts
-    pub bbc0_irqs: ReadOnly<BbcnIrqs, 0x0302, 1>,
+    // Status and interrupts. BBC0_IRQS lives at 0x0002, not at the BBC0
+    // block; only BBC0_PS (PHY status) is at 0x0302.
+    pub bbc0_irqs: ReadOnly<BbcnIrqs, 0x0002, 1>,
     pub bbc0_irqm: ReadWrite<BbcnIrqm, 0x0300, 1>,
     pub bbc0_ps: ReadOnly<BbcnPs, 0x0302, 1>,
 
@@ -217,8 +221,8 @@ pub struct Radio {
     // BBC1 2.4GHz Baseband Registers (0x0400-0x0494)
     // =========================================================================
 
-    // Status and interrupts
-    pub bbc1_irqs: ReadOnly<BbcnIrqs, 0x0402, 1>,
+    // Status and interrupts (see BBC0 above for the address-space split).
+    pub bbc1_irqs: ReadOnly<BbcnIrqs, 0x0003, 1>,
     pub bbc1_irqm: ReadWrite<BbcnIrqm, 0x0400, 1>,
     pub bbc1_ps: ReadOnly<BbcnPs, 0x0402, 1>,
 

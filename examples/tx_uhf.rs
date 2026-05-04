@@ -79,7 +79,7 @@ fn main() -> io::Result<()> {
     // ── transition to TxPrep ───────────────────────────────────────────
     radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::TxPrep);
     spi::write_register(&mut dev, &radio.rf09_cmd)?;
-    std::thread::sleep(Duration::from_micros(200)); // PLL lock
+    spi::wait_rf09_txprep_locked(&mut dev, &mut radio, Duration::from_millis(5))?;
 
     // ── load TX FIFO ───────────────────────────────────────────────────
     spi::write_tx_fifo(&mut dev, Bbc::Bbc0, &payload)?;

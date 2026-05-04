@@ -82,14 +82,16 @@ fn main() -> io::Result<()> {
         .map_err(io::Error::other)?;
 
     // ── signal handling ────────────────────────────────────────────────
-    let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    signal_hook::flag::register(signal_hook::consts::SIGINT, running.clone())
+    // signal_hook::flag::register *sets* the flag on signal receipt, so the
+    // sentinel is false-until-Ctrl-C and the loop exits when it flips to true.
+    let term = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGINT, term.clone())
         .map_err(io::Error::other)?;
 
     // ── enter Rx ───────────────────────────────────────────────────────
     radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::TxPrep);
     spi::write_register(&mut dev, &radio.rf09_cmd)?;
-    std::thread::sleep(Duration::from_micros(200));
+    spi::wait_rf09_txprep_locked(&mut dev, &mut radio, Duration::from_millis(5))?;
     radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Rx);
     spi::write_register(&mut dev, &radio.rf09_cmd)?;
 
@@ -105,7 +107,7 @@ fn main() -> io::Result<()> {
     let mut tx_count: u64 = 0;
     let mut rx_count: u64 = 0;
 
-    while running.load(std::sync::atomic::Ordering::Relaxed) {
+    while !term.load(std::sync::atomic::Ordering::Relaxed) {
         // ── check for RX ───────────────────────────────────────────────
         if irq.wait_edge_event(Duration::from_millis(50)).is_ok() {
             while irq.has_edge_event().unwrap_or(false) {
@@ -142,7 +144,10 @@ fn main() -> io::Result<()> {
             beacon.extend_from_slice(b"PING");
             beacon.extend_from_slice(&seq.to_be_bytes());
 
-            // TxPrep -> load FIFO -> TX -> back to Rx.
+            // TxPrep -> load FIFO -> wait for PLL -> TX -> back to Rx.
+            // The FIFO + TXFL writes already take ~hundreds of µs at 10 MHz
+            // SPI, but on a fast bus the PLL may not be locked yet when we
+            // try to transition to Tx - poll explicitly.
             radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::TxPrep);
             spi::write_register(&mut dev, &radio.rf09_cmd)?;
 
@@ -150,6 +155,7 @@ fn main() -> io::Result<()> {
             radio.bbc0_txfl.value = BbcnTxfl::new().with_txfl(beacon.len() as u16);
             spi::write_register(&mut dev, &radio.bbc0_txfl)?;
 
+            spi::wait_rf09_txprep_locked(&mut dev, &mut radio, Duration::from_millis(5))?;
             radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Tx);
             spi::write_register(&mut dev, &radio.rf09_cmd)?;
 

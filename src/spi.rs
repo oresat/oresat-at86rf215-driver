@@ -6,7 +6,7 @@
 //! [`crate::radio`].
 
 use std::io::{self, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use spidev::{SpiModeFlags, SpidevOptions, SpidevTransfer};
 
@@ -14,7 +14,7 @@ use crate::freq::PllSettings;
 use crate::radio::{Radio, BBC0_FBRXS, BBC0_FBTXS, BBC1_FBRXS, BBC1_FBTXS};
 use crate::registers::{
     generate_read_header, generate_write_header, BulkWrites, ChipResetCmd, DevicePartNumber,
-    Readable, Writable,
+    Readable, TransceiverState, Writable,
 };
 
 /// Open a spidev device with sensible defaults for the AT86RF215.
@@ -148,29 +148,100 @@ pub fn apply_channel_rf24(
     Ok(())
 }
 
-/// Issue a chip reset, wait for the radio to come out of reset, then read the
-/// `RF_PN` / `RF_VN` identification registers.
+/// Issue a chip reset, poll `RF09_IRQS.WAKEUP` until the chip is awake, then
+/// read the `RF_PN` / `RF_VN` identification registers.
 ///
-/// Every hardware example + the daemon otherwise duplicates this bring-up:
-///   1. `RF_RST.cmd = Reset`
-///   2. sleep 2 ms (datasheet §10.4.1 t_PWR is well under that)
-///   3. read `RF_PN`
-///   4. read `RF_VN`
-///
-/// On return, `radio.rf_pn` / `radio.rf_vn` hold the device's reply and the
-/// decoded `(part number, version)` pair is returned for logging.
+/// Returns `(part number, version)` for logging.
 pub fn reset_and_identify(
     spi: &mut spidev::Spidev,
     radio: &mut Radio,
 ) -> io::Result<(DevicePartNumber, u8)> {
     radio.rf_rst.value = radio.rf_rst.value.with_cmd(ChipResetCmd::Reset);
     write_register(spi, &radio.rf_rst)?;
-    std::thread::sleep(Duration::from_millis(2));
+
+    let deadline = Instant::now() + Duration::from_millis(10);
+    loop {
+        read_register(spi, &mut radio.rf09_irqs)?;
+        if radio.rf09_irqs.value.wakeup() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "AT86RF215 did not assert RF09_IRQS.WAKEUP within 10 ms of reset",
+            ));
+        }
+        std::thread::sleep(Duration::from_micros(100));
+    }
 
     read_register(spi, &mut radio.rf_pn)?;
     read_register(spi, &mut radio.rf_vn)?;
 
     Ok((radio.rf_pn.value.pn(), radio.rf_vn.value.vn()))
+}
+
+/// Poll `RFn_STATE` and `RFn_PLL.LS` until the transceiver reaches `TXPREP`
+/// with the PLL locked, or `timeout` elapses.
+/// 
+/// Reads the per-call state into `radio.rf09_state` / `radio.rf09_pll` so
+/// the caller can inspect them after a timeout.
+pub fn wait_rf09_txprep_locked(
+    spi: &mut spidev::Spidev,
+    radio: &mut Radio,
+    timeout: Duration,
+) -> io::Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        read_register(spi, &mut radio.rf09_state)?;
+        read_register(spi, &mut radio.rf09_pll)?;
+        if radio.rf09_state.value.state() == TransceiverState::TxPrep
+            && radio.rf09_pll.value.ls()
+        {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!(
+                    "RF09 TxPrep+PLL-lock not reached in {:?} (state={:?}, pll_locked={})",
+                    timeout,
+                    radio.rf09_state.value.state(),
+                    radio.rf09_pll.value.ls(),
+                ),
+            ));
+        }
+        std::thread::sleep(Duration::from_micros(100));
+    }
+}
+
+/// RF24 counterpart of [`wait_rf09_txprep_locked`].
+pub fn wait_rf24_txprep_locked(
+    spi: &mut spidev::Spidev,
+    radio: &mut Radio,
+    timeout: Duration,
+) -> io::Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        read_register(spi, &mut radio.rf24_state)?;
+        read_register(spi, &mut radio.rf24_pll)?;
+        if radio.rf24_state.value.state() == TransceiverState::TxPrep
+            && radio.rf24_pll.value.ls()
+        {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!(
+                    "RF24 TxPrep+PLL-lock not reached in {:?} (state={:?}, pll_locked={})",
+                    timeout,
+                    radio.rf24_state.value.state(),
+                    radio.rf24_pll.value.ls(),
+                ),
+            ));
+        }
+        std::thread::sleep(Duration::from_micros(100));
+    }
 }
 
 #[cfg(test)]

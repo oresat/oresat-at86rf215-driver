@@ -1369,15 +1369,20 @@ pub struct RfnRndv {
 
 /// RFn_PADFE - Power Amplifier Digital Frontend Enhancement
 ///
-/// PA frontend enhancement configuration.
+/// External PA / front-end-module control. PADFE selects which mode drives
+/// the FEAxx / FEBxx GPIOs (datasheet §6.7).
 #[bitfield(u8)]
 pub struct RfnPadfe {
-    #[bits(7)]
+    #[bits(6)]
     __: u8,
 
-    /// PA Digital Frontend Enhancement
-    #[bits(1)]
-    pub padfe: bool,
+    /// External Front-End Mode
+    /// - 0: Disabled (FE pins inactive)
+    /// - 1: FE_MODE_4
+    /// - 2: FE_MODE_5
+    /// - 3: FE_MODE_6
+    #[bits(2)]
+    pub padfe: u8,
 }
 
 /// RFn_TXCI - Transmitter I DC Offset Calibration

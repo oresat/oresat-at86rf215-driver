@@ -460,7 +460,7 @@ fn init_radio(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<()> {
     // 6. Transition to Rx: TrxOff -> TxPrep, then TxPrep -> Rx.
     radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::TxPrep);
     spi::write_register(dev, &radio.rf09_cmd)?;
-    std::thread::sleep(Duration::from_micros(200)); // PLL lock time
+    spi::wait_rf09_txprep_locked(dev, radio, Duration::from_millis(5))?;
 
     radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Rx);
     spi::write_register(dev, &radio.rf09_cmd)?;

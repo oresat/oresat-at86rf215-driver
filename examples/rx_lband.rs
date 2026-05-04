@@ -69,7 +69,7 @@ fn main() -> io::Result<()> {
     // Enter Rx via RF24
     radio.rf24_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::TxPrep);
     spi::write_register(&mut dev, &radio.rf24_cmd)?;
-    std::thread::sleep(Duration::from_micros(200));
+    spi::wait_rf24_txprep_locked(&mut dev, &mut radio, Duration::from_millis(5))?;
 
     radio.rf24_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Rx);
     spi::write_register(&mut dev, &radio.rf24_cmd)?;
@@ -83,16 +83,17 @@ fn main() -> io::Result<()> {
         .request()
         .map_err(io::Error::other)?;
 
-    // Signal handling
-    let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-    let r = running.clone();
-    signal_hook::flag::register(signal_hook::consts::SIGINT, running.clone())
+    // Signal handling. signal_hook::flag::register *sets* the flag on signal
+    // receipt; sentinel is false-until-Ctrl-C, loop exits when it flips true.
+    let term = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let r = term.clone();
+    signal_hook::flag::register(signal_hook::consts::SIGINT, term.clone())
         .map_err(io::Error::other)?;
 
     // Receive loop
     let mut rx_count: u64 = 0;
 
-    while r.load(std::sync::atomic::Ordering::Relaxed) {
+    while !r.load(std::sync::atomic::Ordering::Relaxed) {
         if irq.wait_edge_event(Duration::from_millis(250)).is_err() {
             continue;
         }

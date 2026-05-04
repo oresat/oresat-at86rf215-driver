@@ -843,7 +843,7 @@ impl From<&RfnPacConfig> for RfnPac {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct RfnPadfeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub padfe: Option<bool>,
+    pub padfe: Option<u8>,
 }
 
 impl From<&RfnPadfe> for RfnPadfeConfig {
