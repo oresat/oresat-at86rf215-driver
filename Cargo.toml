@@ -21,10 +21,10 @@ toml = "1.1.2"
 [features]
 tui = ["dep:ratatui", "dep:crossterm"]
 
-[[example]]
-name = "tui"
-required-features = ["tui"]
+# [[example]]
+# name = "tui"
+# required-features = ["tui"]
 
-[[example]]
-name = "uhf_tui"
-required-features = ["tui"]
+# [[example]]
+# name = "uhf_tui"
+# required-features = ["tui"]
