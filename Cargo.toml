@@ -25,6 +25,6 @@ tui = ["dep:ratatui", "dep:crossterm"]
 name = "tui"
 required-features = ["tui"]
 
-# [[example]]
-# name = "uhf_tui"
-# required-features = ["tui"]
+[[example]]
+name = "uhf_tui"
+required-features = ["tui"]
