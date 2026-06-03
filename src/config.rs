@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::registers::*;
+use serde::{Deserialize, Serialize};
 
 /*
  * This file contains non-bitfield versions of the radio configuration registers
@@ -12,154 +12,254 @@ use crate::registers::*;
  * 3. to_config in Radio
  */
 
-
- #[derive(Debug, Clone, Serialize, Deserialize, Default)]
- #[serde(default)] // allows for serialization from incomplete toml files
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)] // allows for serialization from incomplete toml files
 pub struct RadioConfig {
     // General Config
-    #[serde(skip_serializing_if = "is_default")] pub rf_cfg:               RfCfgConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf_clko:              RfClkoConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf_bmdvc:             RfBmdvcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf_xoc:               RfXocConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf_iqifc0:            RfIqifc0Config,
-    #[serde(skip_serializing_if = "is_default")] pub rf_iqifc1:            RfIqifc1Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf_cfg: RfCfgConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf_clko: RfClkoConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf_bmdvc: RfBmdvcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf_xoc: RfXocConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf_iqifc0: RfIqifc0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf_iqifc1: RfIqifc1Config,
 
     // Transceiver Auxiliary Settings
-    #[serde(skip_serializing_if = "is_default")] pub rf09_auxs:            RfnAuxsConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_auxs: RfnAuxsConfig,
 
     // Channel configuration
-    #[serde(skip_serializing_if = "is_default")] pub rf09_cs:              RfnCsConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf09_ccf0:            RfnCcf0Config,
-    #[serde(skip_serializing_if = "is_default")] pub rf09_cn:              RfnCnConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_cs: RfnCsConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_ccf0: RfnCcf0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_cn: RfnCnConfig,
 
     // Receiver configuration
-    #[serde(skip_serializing_if = "is_default")] pub rf09_rxbwc:           RfnRxbwcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf09_rxdfe:           RfnRxdfeConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf09_agcc:            RfnAgccConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf09_agcs:            RfnAgcsConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_rxbwc: RfnRxbwcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_rxdfe: RfnRxdfeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_agcc: RfnAgccConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_agcs: RfnAgcsConfig,
 
     // Transmitter configuration
-    #[serde(skip_serializing_if = "is_default")] pub rf09_txcutc:          RfnTxcutcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf09_txdfe:           RfnTxdfeConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf09_pac:             RfnPacConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf09_padfe:           RfnPadfeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_txcutc: RfnTxcutcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_txdfe: RfnTxdfeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_pac: RfnPacConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_padfe: RfnPadfeConfig,
 
     // PLL configuration
-    #[serde(skip_serializing_if = "is_default")] pub rf09_pll:             RfnPllConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_auxs:            RfnAuxsConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_pll: RfnPllConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_auxs: RfnAuxsConfig,
 
     // Channel configuration
-    #[serde(skip_serializing_if = "is_default")] pub rf24_cs:              RfnCsConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_ccf0:            RfnCcf0Config,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_cn:              RfnCnConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_cs: RfnCsConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_ccf0: RfnCcf0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_cn: RfnCnConfig,
 
     // Receiver configuration
-    #[serde(skip_serializing_if = "is_default")] pub rf24_rxbwc:           RfnRxbwcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_rxdfe:           RfnRxdfeConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_agcc:            RfnAgccConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_agcs:            RfnAgcsConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_rxbwc: RfnRxbwcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_rxdfe: RfnRxdfeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_agcc: RfnAgccConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_agcs: RfnAgcsConfig,
 
     // Transmitter configuration
-    #[serde(skip_serializing_if = "is_default")] pub rf24_txcutc:          RfnTxcutcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_txdfe:           RfnTxdfeConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_pac:             RfnPacConfig,
-    #[serde(skip_serializing_if = "is_default")] pub rf24_padfe:           RfnPadfeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_txcutc: RfnTxcutcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_txdfe: RfnTxdfeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_pac: RfnPacConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_padfe: RfnPadfeConfig,
 
     // PLL configuration
-    #[serde(skip_serializing_if = "is_default")] pub rf24_pll:             RfnPllConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf24_pll: RfnPllConfig,
+
+    // BBC0 PHY control (PHY type, baseband enable, FCS mode)
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_pc: BbcnPcConfig,
 
     // BBC0 OFDM PHY configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_ofdmphrtx:       BbcnOfdmphrtxConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_ofdmc:           BbcnOfdmcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_ofdmsw:          BbcnOfdmswConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_ofdmphrtx: BbcnOfdmphrtxConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_ofdmc: BbcnOfdmcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_ofdmsw: BbcnOfdmswConfig,
 
     // BBC0 O-QPSK PHY configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_oqpskc0:         BbcnOqpskc0Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_oqpskc1:         BbcnOqpskc1Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_oqpskc2:         BbcnOqpskc2Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_oqpskc3:         BbcnOqpskc3Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_oqpskphrtx:      BbcnOqpskphrtxConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_oqpskc0: BbcnOqpskc0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_oqpskc1: BbcnOqpskc1Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_oqpskc2: BbcnOqpskc2Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_oqpskc3: BbcnOqpskc3Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_oqpskphrtx: BbcnOqpskphrtxConfig,
 
     // BBC0 Address filter configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_afc0:            BbcnAfc0Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_afc1:            BbcnAfc1Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_afftm:           BbcnAfftmConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_affvm:           BbcnAffvmConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_afc0: BbcnAfc0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_afc1: BbcnAfc1Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_afftm: BbcnAfftmConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_affvm: BbcnAffvmConfig,
 
     // BBC0 Auto mode configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_amcs:            BbcnAmcsConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_amedt:           BbcnAmedtConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_amaackpd:        BbcnAmaackpdConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_amaackt:         BbcnAmaacktConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_amcs: BbcnAmcsConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_amedt: BbcnAmedtConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_amaackpd: BbcnAmaackpdConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_amaackt: BbcnAmaacktConfig,
 
     // BBC0 FSK PHY configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskc0:           BbcnFskc0Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskc1:           BbcnFskc1Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskc2:           BbcnFskc2Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskc3:           BbcnFskc3Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskc4:           BbcnFskc4Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskpll:          BbcnFskpllConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fsksfd0:         BbcnFsksfdConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fsksfd1:         BbcnFsksfdConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskphrtx:        BbcnFskphrtxConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskrpc:          BbcnFskrpcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskrpcont:       BbcnFskrpcontConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskrpcofft:      BbcnFskrpcofftConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskdm:           BbcnFskdmConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskpe0:          BbcnFskpeConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskpe1:          BbcnFskpeConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc0_fskpe2:          BbcnFskpeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskc0: BbcnFskc0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskc1: BbcnFskc1Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskc2: BbcnFskc2Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskc3: BbcnFskc3Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskc4: BbcnFskc4Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskpll: BbcnFskpllConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fsksfd0: BbcnFsksfdConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fsksfd1: BbcnFsksfdConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskphrtx: BbcnFskphrtxConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskrpc: BbcnFskrpcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskrpcont: BbcnFskrpcontConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskrpcofft: BbcnFskrpcofftConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskdm: BbcnFskdmConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskpe0: BbcnFskpeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskpe1: BbcnFskpeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc0_fskpe2: BbcnFskpeConfig,
+
+    // BBC1 PHY control (PHY type, baseband enable, FCS mode)
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_pc: BbcnPcConfig,
 
     // BBC1 OFDM PHY configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_ofdmphrtx:       BbcnOfdmphrtxConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_ofdmc:           BbcnOfdmcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_ofdmsw:          BbcnOfdmswConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_ofdmphrtx: BbcnOfdmphrtxConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_ofdmc: BbcnOfdmcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_ofdmsw: BbcnOfdmswConfig,
 
     // BBC1 O-QPSK PHY configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_oqpskc0:         BbcnOqpskc0Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_oqpskc1:         BbcnOqpskc1Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_oqpskc2:         BbcnOqpskc2Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_oqpskc3:         BbcnOqpskc3Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_oqpskphrtx:      BbcnOqpskphrtxConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_oqpskc0: BbcnOqpskc0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_oqpskc1: BbcnOqpskc1Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_oqpskc2: BbcnOqpskc2Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_oqpskc3: BbcnOqpskc3Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_oqpskphrtx: BbcnOqpskphrtxConfig,
 
     // BBC1 Address filter configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_afc0:            BbcnAfc0Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_afc1:            BbcnAfc1Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_afftm:           BbcnAfftmConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_affvm:           BbcnAffvmConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_afc0: BbcnAfc0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_afc1: BbcnAfc1Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_afftm: BbcnAfftmConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_affvm: BbcnAffvmConfig,
 
     // BBC1 Auto mode configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_amcs:            BbcnAmcsConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_amedt:           BbcnAmedtConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_amaackpd:        BbcnAmaackpdConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_amaackt:         BbcnAmaacktConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_amcs: BbcnAmcsConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_amedt: BbcnAmedtConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_amaackpd: BbcnAmaackpdConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_amaackt: BbcnAmaacktConfig,
 
     // BBC1 FSK PHY configuration
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskc0:           BbcnFskc0Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskc1:           BbcnFskc1Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskc2:           BbcnFskc2Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskc3:           BbcnFskc3Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskc4:           BbcnFskc4Config,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskpll:          BbcnFskpllConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fsksfd0:         BbcnFsksfdConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fsksfd1:         BbcnFsksfdConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskphrtx:        BbcnFskphrtxConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskrpc:          BbcnFskrpcConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskrpcont:       BbcnFskrpcontConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskrpcofft:      BbcnFskrpcofftConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskdm:           BbcnFskdmConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskpe0:          BbcnFskpeConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskpe1:          BbcnFskpeConfig,
-    #[serde(skip_serializing_if = "is_default")] pub bbc1_fskpe2:          BbcnFskpeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskc0: BbcnFskc0Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskc1: BbcnFskc1Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskc2: BbcnFskc2Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskc3: BbcnFskc3Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskc4: BbcnFskc4Config,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskpll: BbcnFskpllConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fsksfd0: BbcnFsksfdConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fsksfd1: BbcnFsksfdConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskphrtx: BbcnFskphrtxConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskrpc: BbcnFskrpcConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskrpcont: BbcnFskrpcontConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskrpcofft: BbcnFskrpcofftConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskdm: BbcnFskdmConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskpe0: BbcnFskpeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskpe1: BbcnFskpeConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub bbc1_fskpe2: BbcnFskpeConfig,
 }
-
 
 // Used for reducing empty members in radioConfig struct
 fn is_default<T: Default + PartialEq>(v: &T) -> bool {
     v == &T::default()
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct RfRstConfig {
@@ -179,8 +279,7 @@ impl From<&RfRst> for RfRstConfig {
 impl From<&RfRstConfig> for RfRst {
     fn from(c: &RfRstConfig) -> Self {
         let default = RfRst::new();
-        RfRst::new()
-            .with_cmd(c.cmd.unwrap_or_else(|| default.cmd()))
+        RfRst::new().with_cmd(c.cmd.unwrap_or_else(|| default.cmd()))
     }
 }
 
@@ -366,10 +465,6 @@ impl From<&RfIqifc1Config> for RfIqifc1 {
     }
 }
 
-
-
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct RfnIrqmConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -452,8 +547,6 @@ impl From<&RfnAuxsConfig> for RfnAuxs {
     }
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct RfnCmdConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -472,8 +565,7 @@ impl From<&RfnCmd> for RfnCmdConfig {
 impl From<&RfnCmdConfig> for RfnCmd {
     fn from(c: &RfnCmdConfig) -> Self {
         let default = RfnCmd::new();
-        RfnCmd::new()
-            .with_cmd(c.cmd.unwrap_or_else(|| default.cmd()))
+        RfnCmd::new().with_cmd(c.cmd.unwrap_or_else(|| default.cmd()))
     }
 }
 
@@ -495,8 +587,7 @@ impl From<&RfnCs> for RfnCsConfig {
 impl From<&RfnCsConfig> for RfnCs {
     fn from(c: &RfnCsConfig) -> Self {
         let default = RfnCs::new();
-        RfnCs::new()
-            .with_cs(c.cs.unwrap_or_else(|| default.cs()))
+        RfnCs::new().with_cs(c.cs.unwrap_or_else(|| default.cs()))
     }
 }
 
@@ -518,8 +609,7 @@ impl From<&RfnCcf0> for RfnCcf0Config {
 impl From<&RfnCcf0Config> for RfnCcf0 {
     fn from(c: &RfnCcf0Config) -> Self {
         let default = RfnCcf0::new();
-        RfnCcf0::new()
-            .with_ccf0(c.ccf0.unwrap_or_else(|| default.ccf0()))
+        RfnCcf0::new().with_ccf0(c.ccf0.unwrap_or_else(|| default.ccf0()))
     }
 }
 
@@ -674,8 +764,6 @@ impl From<&RfnAgcsConfig> for RfnAgcs {
     }
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct RfnEdcConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -694,8 +782,7 @@ impl From<&RfnEdc> for RfnEdcConfig {
 impl From<&RfnEdcConfig> for RfnEdc {
     fn from(c: &RfnEdcConfig) -> Self {
         let default = RfnEdc::new();
-        RfnEdc::new()
-            .with_edm(c.edm.unwrap_or_else(|| default.edm()))
+        RfnEdc::new().with_edm(c.edm.unwrap_or_else(|| default.edm()))
     }
 }
 
@@ -726,8 +813,6 @@ impl From<&RfnEddConfig> for RfnEdd {
     }
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct RfnPllConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -746,12 +831,9 @@ impl From<&RfnPll> for RfnPllConfig {
 impl From<&RfnPllConfig> for RfnPll {
     fn from(c: &RfnPllConfig) -> Self {
         let default = RfnPll::new();
-        RfnPll::new()
-            .with_lbw(c.lbw.unwrap_or_else(|| default.lbw()))
+        RfnPll::new().with_lbw(c.lbw.unwrap_or_else(|| default.lbw()))
     }
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct RfnTxcutcConfig {
@@ -838,12 +920,10 @@ impl From<&RfnPacConfig> for RfnPac {
     }
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct RfnPadfeConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub padfe: Option<bool>,
+    pub padfe: Option<u8>,
 }
 
 impl From<&RfnPadfe> for RfnPadfeConfig {
@@ -858,8 +938,7 @@ impl From<&RfnPadfe> for RfnPadfeConfig {
 impl From<&RfnPadfeConfig> for RfnPadfe {
     fn from(c: &RfnPadfeConfig) -> Self {
         let default = RfnPadfe::new();
-        RfnPadfe::new()
-            .with_padfe(c.padfe.unwrap_or_else(|| default.padfe()))
+        RfnPadfe::new().with_padfe(c.padfe.unwrap_or_else(|| default.padfe()))
     }
 }
 
@@ -881,8 +960,7 @@ impl From<&RfnTxci> for RfnTxciConfig {
 impl From<&RfnTxciConfig> for RfnTxci {
     fn from(c: &RfnTxciConfig) -> Self {
         let default = RfnTxci::new();
-        RfnTxci::new()
-            .with_dcoi(c.dcoi.unwrap_or_else(|| default.dcoi()))
+        RfnTxci::new().with_dcoi(c.dcoi.unwrap_or_else(|| default.dcoi()))
     }
 }
 
@@ -904,8 +982,7 @@ impl From<&RfnTxcq> for RfnTxcqConfig {
 impl From<&RfnTxcqConfig> for RfnTxcq {
     fn from(c: &RfnTxcqConfig) -> Self {
         let default = RfnTxcq::new();
-        RfnTxcq::new()
-            .with_dcoq(c.dcoq.unwrap_or_else(|| default.dcoq()))
+        RfnTxcq::new().with_dcoq(c.dcoq.unwrap_or_else(|| default.dcoq()))
     }
 }
 
@@ -1006,10 +1083,6 @@ impl From<&BbcnPcConfig> for BbcnPc {
     }
 }
 
-
-
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BbcnTxflConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1028,12 +1101,9 @@ impl From<&BbcnTxfl> for BbcnTxflConfig {
 impl From<&BbcnTxflConfig> for BbcnTxfl {
     fn from(c: &BbcnTxflConfig) -> Self {
         let default = BbcnTxfl::new();
-        BbcnTxfl::new()
-            .with_txfl(c.txfl.unwrap_or_else(|| default.txfl()))
+        BbcnTxfl::new().with_txfl(c.txfl.unwrap_or_else(|| default.txfl()))
     }
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BbcnFbliConfig {
@@ -1053,8 +1123,7 @@ impl From<&BbcnFbli> for BbcnFbliConfig {
 impl From<&BbcnFbliConfig> for BbcnFbli {
     fn from(c: &BbcnFbliConfig) -> Self {
         let default = BbcnFbli::new();
-        BbcnFbli::new()
-            .with_fbli(c.fbli.unwrap_or_else(|| default.fbli()))
+        BbcnFbli::new().with_fbli(c.fbli.unwrap_or_else(|| default.fbli()))
     }
 }
 
@@ -1096,8 +1165,6 @@ impl From<&BbcnOfdmphrtxConfig> for BbcnOfdmphrtx {
             .with_rb21(c.rb21.unwrap_or_else(|| default.rb21()))
     }
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BbcnOfdmcConfig {
@@ -1332,8 +1399,6 @@ impl From<&BbcnOqpskphrtxConfig> for BbcnOqpskphrtx {
     }
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BbcnAfc0Config {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1418,8 +1483,7 @@ impl From<&BbcnAfftm> for BbcnAfftmConfig {
 impl From<&BbcnAfftmConfig> for BbcnAfftm {
     fn from(c: &BbcnAfftmConfig) -> Self {
         let default = BbcnAfftm::new();
-        BbcnAfftm::new()
-            .with_afftm(c.afftm.unwrap_or_else(|| default.afftm()))
+        BbcnAfftm::new().with_afftm(c.afftm.unwrap_or_else(|| default.afftm()))
     }
 }
 
@@ -1441,12 +1505,9 @@ impl From<&BbcnAffvm> for BbcnAffvmConfig {
 impl From<&BbcnAffvmConfig> for BbcnAffvm {
     fn from(c: &BbcnAffvmConfig) -> Self {
         let default = BbcnAffvm::new();
-        BbcnAffvm::new()
-            .with_affvm(c.affvm.unwrap_or_else(|| default.affvm()))
+        BbcnAffvm::new().with_affvm(c.affvm.unwrap_or_else(|| default.affvm()))
     }
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BbcnMaceaConfig {
@@ -1466,8 +1527,7 @@ impl From<&BbcnMacea> for BbcnMaceaConfig {
 impl From<&BbcnMaceaConfig> for BbcnMacea {
     fn from(c: &BbcnMaceaConfig) -> Self {
         let default = BbcnMacea::new();
-        BbcnMacea::new()
-            .with_macea(c.macea.unwrap_or_else(|| default.macea()))
+        BbcnMacea::new().with_macea(c.macea.unwrap_or_else(|| default.macea()))
     }
 }
 
@@ -1489,8 +1549,7 @@ impl From<&BbcnMacpid> for BbcnMacpidConfig {
 impl From<&BbcnMacpidConfig> for BbcnMacpid {
     fn from(c: &BbcnMacpidConfig) -> Self {
         let default = BbcnMacpid::new();
-        BbcnMacpid::new()
-            .with_macpid(c.macpid.unwrap_or_else(|| default.macpid()))
+        BbcnMacpid::new().with_macpid(c.macpid.unwrap_or_else(|| default.macpid()))
     }
 }
 
@@ -1512,8 +1571,7 @@ impl From<&BbcnMacsha> for BbcnMacshaConfig {
 impl From<&BbcnMacshaConfig> for BbcnMacsha {
     fn from(c: &BbcnMacshaConfig) -> Self {
         let default = BbcnMacsha::new();
-        BbcnMacsha::new()
-            .with_macsha(c.macsha.unwrap_or_else(|| default.macsha()))
+        BbcnMacsha::new().with_macsha(c.macsha.unwrap_or_else(|| default.macsha()))
     }
 }
 
@@ -1586,8 +1644,7 @@ impl From<&BbcnAmedt> for BbcnAmedtConfig {
 impl From<&BbcnAmedtConfig> for BbcnAmedt {
     fn from(c: &BbcnAmedtConfig) -> Self {
         let default = BbcnAmedt::new();
-        BbcnAmedt::new()
-            .with_amedt(c.amedt.unwrap_or_else(|| default.amedt()))
+        BbcnAmedt::new().with_amedt(c.amedt.unwrap_or_else(|| default.amedt()))
     }
 }
 
@@ -1644,8 +1701,7 @@ impl From<&BbcnAmaackt> for BbcnAmaacktConfig {
 impl From<&BbcnAmaacktConfig> for BbcnAmaackt {
     fn from(c: &BbcnAmaacktConfig) -> Self {
         let default = BbcnAmaackt::new();
-        BbcnAmaackt::new()
-            .with_amaackt(c.amaackt.unwrap_or_else(|| default.amaackt()))
+        BbcnAmaackt::new().with_amaackt(c.amaackt.unwrap_or_else(|| default.amaackt()))
     }
 }
 
@@ -1846,8 +1902,7 @@ impl From<&BbcnFskpll> for BbcnFskpllConfig {
 impl From<&BbcnFskpllConfig> for BbcnFskpll {
     fn from(c: &BbcnFskpllConfig) -> Self {
         let default = BbcnFskpll::new();
-        BbcnFskpll::new()
-            .with_fskpll(c.fskpll.unwrap_or_else(|| default.fskpll()))
+        BbcnFskpll::new().with_fskpll(c.fskpll.unwrap_or_else(|| default.fskpll()))
     }
 }
 
@@ -1869,8 +1924,7 @@ impl From<&BbcnFsksfd> for BbcnFsksfdConfig {
 impl From<&BbcnFsksfdConfig> for BbcnFsksfd {
     fn from(c: &BbcnFsksfdConfig) -> Self {
         let default = BbcnFsksfd::new();
-        BbcnFsksfd::new()
-            .with_fsksfd(c.fsksfd.unwrap_or_else(|| default.fsksfd()))
+        BbcnFsksfd::new().with_fsksfd(c.fsksfd.unwrap_or_else(|| default.fsksfd()))
     }
 }
 
@@ -1908,8 +1962,6 @@ impl From<&BbcnFskphrtxConfig> for BbcnFskphrtx {
             .with_sfd(c.sfd.unwrap_or_else(|| default.sfd()))
     }
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BbcnFskrpcConfig {
@@ -1956,8 +2008,7 @@ impl From<&BbcnFskrpcont> for BbcnFskrpcontConfig {
 impl From<&BbcnFskrpcontConfig> for BbcnFskrpcont {
     fn from(c: &BbcnFskrpcontConfig) -> Self {
         let default = BbcnFskrpcont::new();
-        BbcnFskrpcont::new()
-            .with_fskrpcont(c.fskrpcont.unwrap_or_else(|| default.fskrpcont()))
+        BbcnFskrpcont::new().with_fskrpcont(c.fskrpcont.unwrap_or_else(|| default.fskrpcont()))
     }
 }
 
@@ -1979,12 +2030,9 @@ impl From<&BbcnFskrpcofft> for BbcnFskrpcofftConfig {
 impl From<&BbcnFskrpcofftConfig> for BbcnFskrpcofft {
     fn from(c: &BbcnFskrpcofftConfig) -> Self {
         let default = BbcnFskrpcofft::new();
-        BbcnFskrpcofft::new()
-            .with_fskrpcofft(c.fskrpcofft.unwrap_or_else(|| default.fskrpcofft()))
+        BbcnFskrpcofft::new().with_fskrpcofft(c.fskrpcofft.unwrap_or_else(|| default.fskrpcofft()))
     }
 }
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BbcnFskdmConfig {
@@ -2031,8 +2079,7 @@ impl From<&BbcnFskpe> for BbcnFskpeConfig {
 impl From<&BbcnFskpeConfig> for BbcnFskpe {
     fn from(c: &BbcnFskpeConfig) -> Self {
         let default = BbcnFskpe::new();
-        BbcnFskpe::new()
-            .with_fskpe(c.fskpe.unwrap_or_else(|| default.fskpe()))
+        BbcnFskpe::new().with_fskpe(c.fskpe.unwrap_or_else(|| default.fskpe()))
     }
 }
 
@@ -2074,10 +2121,6 @@ impl From<&BbcnCntcConfig> for BbcnCntc {
             .with_captxs(c.captxs.unwrap_or_else(|| default.captxs()))
     }
 }
-
-
-
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BbcnIrqmConfig {
@@ -2168,10 +2211,3 @@ impl From<&BbcnPmucConfig> for BbcnPmuc {
             .with_ccfts(c.ccfts.unwrap_or_else(|| default.ccfts()))
     }
 }
-
-
-
-
-
-
-
