@@ -1,6 +1,6 @@
 //! AT86RF215 Register Definitions
-use serde::{Deserialize, Serialize};
 use bitfield_struct::bitfield;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadOnly<T, const ADDR: u16, const SIZE: usize> {
@@ -557,8 +557,8 @@ impl<'a> BulkReads<'a> {
     pub fn parse_responses(&mut self, responses: &[Vec<u8>]) {
         let blocks = self.compute_blocks();
 
-        // TODO verify the format of SPI responses from spidev
-        // Might not need the header at all.
+        // SPI full-duplex: response mirrors the command length.
+        // Valid data starts at byte 2 (after the 2-byte address header).
         for (block, response) in blocks.iter().zip(responses.iter()) {
             // Skip the 2-byte header in the response
             let data = if response.len() > 2 {
@@ -607,7 +607,11 @@ pub struct RfPn {
     /// - 0x34: AT86RF215
     /// - 0x35: AT86RF215IQ
     /// - 0x36: AT86RF215M
-    #[bits(8, access = RO, from = DevicePartNumber::from_bits)]
+    // `access = RO` would be ideal, but bitfield-struct 0.13 strips the `into`
+    // function under RO and then casts the default expression `as u8`, which
+    // rejects the non-unit `Unknown(u8)` variant. The struct is wrapped in
+    // `ReadOnly<...>` at the radio level, so the generated setter is unused.
+    #[bits(8, from = DevicePartNumber::from_bits, into = DevicePartNumber::into_bits)]
     pub pn: DevicePartNumber,
 }
 
@@ -1369,15 +1373,20 @@ pub struct RfnRndv {
 
 /// RFn_PADFE - Power Amplifier Digital Frontend Enhancement
 ///
-/// PA frontend enhancement configuration.
+/// External PA / front-end-module control. PADFE selects which mode drives
+/// the FEAxx / FEBxx GPIOs (datasheet 6.7).
 #[bitfield(u8)]
 pub struct RfnPadfe {
-    #[bits(7)]
+    #[bits(6)]
     __: u8,
 
-    /// PA Digital Frontend Enhancement
-    #[bits(1)]
-    pub padfe: bool,
+    /// External Front-End Mode
+    /// - 0: Disabled (FE pins inactive)
+    /// - 1: FE_MODE_4
+    /// - 2: FE_MODE_5
+    /// - 3: FE_MODE_6
+    #[bits(2)]
+    pub padfe: u8,
 }
 
 /// RFn_TXCI - Transmitter I DC Offset Calibration
@@ -1443,11 +1452,12 @@ pub struct RfnTxdacq {
 /// Main baseband control register for PHY configuration.
 #[bitfield(u8)]
 pub struct BbcnPc {
-    /// PHY Type
-    /// - 0: FSK
-    /// - 1: OFDM
-    /// - 2: OQPSK
-    /// - 3: Reserved/Legacy O-QPSK
+    /// PHY Type (datasheet sec 6.10.3)
+    /// - 0: PHY OFF (modulator disabled; BBEN=1 with PT=0 yields TX state
+    ///   but no symbols — silent failure mode)
+    /// - 1: MR-FSK
+    /// - 2: MR-OFDM
+    /// - 3: MR-O-QPSK
     #[bits(2)]
     pub pt: u8,
 
@@ -1457,9 +1467,9 @@ pub struct BbcnPc {
     #[bits(1)]
     pub bben: bool,
 
-    /// Frame Checksum Type
-    /// - 0: 16-bit CRC (FCS)
-    /// - 1: 32-bit CRC (FCS)
+    /// Frame Checksum Type (datasheet Table 6-46)
+    /// - 0: 32-bit CRC (FCS)
+    /// - 1: 16-bit CRC (FCS)
     #[bits(1)]
     pub fcst: bool,
 
@@ -2090,8 +2100,8 @@ pub struct BbcnFskc1 {
 /// FSK receiver configuration.
 #[bitfield(u8)]
 pub struct BbcnFskc2 {
-    /// FEC Inner Code Enable
-    #[bits(1)]
+    /// FEC Inner Code Enable (silicon reset: 1)
+    #[bits(1, default = true)]
     pub fecie: bool,
 
     /// FEC Scheme
@@ -2110,8 +2120,8 @@ pub struct BbcnFskc2 {
     #[bits(1)]
     pub rxpto: bool,
 
-    /// RX Override
-    #[bits(2)]
+    /// RX Override (silicon reset: 2 = restart on >18 dB stronger frame)
+    #[bits(2, default = 2)]
     pub rxo: u8,
 
     /// Preamble Detection Threshold Mode
@@ -2121,33 +2131,46 @@ pub struct BbcnFskc2 {
 
 /// BBCn_FSKC3 - FSK Configuration 3
 ///
-/// FSK preamble and SFD configuration.
+/// FSK preamble and SFD configuration. Datasheet 6.10.7.4: PDT is bits[3:0],
+/// SFDT is bits[7:4] (both 4-bit fields), reset value 0x85 (SFDT=8, PDT=5).
+///
+/// Defaults match the silicon reset. A zeroed shadow here is harmful: PDT=0
+/// sets the preamble-detector threshold to its most sensitive setting, so the
+/// demodulator locks onto noise and raises a continuous stream of RXFE frames
+/// that all fail CRC. The rx_uhf / tx_uhf examples avoid this only by never
+/// writing FSKC3 (leaving the reset value in place); a driver that flushes
+/// register shadows must default these fields to the reset value so the write
+/// is benign.
 #[bitfield(u8)]
 pub struct BbcnFskc3 {
-    /// Preamble Detection Threshold
-    #[bits(5)]
+    /// Preamble Detection Threshold (bits[3:0]). Lower values increase
+    /// preamble-detector sensitivity.
+    #[bits(4, default = 5)]
     pub pdt: u8,
 
-    /// SFD Detection Threshold
-    #[bits(3)]
+    /// SFD Detection Threshold (bits[7:4]). Lower values increase SFD
+    /// sensitivity; 8 is the IEEE 802.15.4g-recommended default.
+    #[bits(4, default = 8)]
     pub sfdt: u8,
 }
 
 /// BBCn_FSKC4 - FSK Configuration 4
 ///
-/// FSK SFD and raw bit configuration.
+/// FSK SFD and raw bit configuration. Datasheet 6.10.7.5: reset value 0x18
+/// (RAWRBIT=1, CSFD1=2). Defaults match silicon reset so a flushed shadow does
+/// not zero the SFD configuration the demodulator uses for frame detection.
 #[bitfield(u8)]
 pub struct BbcnFskc4 {
     /// Custom SFD 0
     #[bits(2)]
     pub csfd0: u8,
 
-    /// Custom SFD 1
-    #[bits(2)]
+    /// Custom SFD 1 (silicon reset: 2)
+    #[bits(2, default = 2)]
     pub csfd1: u8,
 
-    /// Raw RX Bit Mode
-    #[bits(1)]
+    /// Raw RX Bit Mode (silicon reset: 1)
+    #[bits(1, default = true)]
     pub rawrbit: bool,
 
     /// SFD 32-bit Mode
@@ -2162,12 +2185,16 @@ pub struct BbcnFskc4 {
     __: u8,
 }
 
-/// BBCn_FSKPLL - FSK PLL Configuration
+/// BBCn_FSKPLL - FSK Preamble Length Low Byte
 ///
-/// FSK PLL bandwidth configuration.
+/// Low 8 bits of the 10-bit FSK preamble length {FSKC1.FSKPLH, FSKPLL}, in
+/// octets. Datasheet 6.10.7.6: reset value 0x08 (preamble length 8). The
+/// preamble length must be equal on the TX and RX ends. Defaults to the reset
+/// value: a zeroed shadow sets a 0-octet preamble, which (with PDTM=0) leaves
+/// the preamble detector with nothing to require and it triggers on noise.
 #[bitfield(u8)]
 pub struct BbcnFskpll {
-    #[bits(8)]
+    #[bits(8, default = 8)]
     pub fskpll: u8,
 }
 
@@ -2561,16 +2588,24 @@ pub struct BbcnPmuq {
 
 /// Device Part Number Values
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
 pub enum DevicePartNumber {
-    AT86RF215 = 0x34,
-    AT86RF215IQ = 0x35,
-    AT86RF215M = 0x36,
+    AT86RF215,
+    AT86RF215IQ,
+    AT86RF215M,
+    /// Unrecognised byte read from `RF_PN`. A value of `0xFF` typically means
+    /// MISO is floating (chip not powered, wrong CS, or wiring fault) rather
+    /// than a real part number.
+    Unknown(u8),
 }
 
 impl DevicePartNumber {
     pub const fn into_bits(self) -> u8 {
-        self as _
+        match self {
+            Self::AT86RF215 => 0x34,
+            Self::AT86RF215IQ => 0x35,
+            Self::AT86RF215M => 0x36,
+            Self::Unknown(b) => b,
+        }
     }
 
     pub const fn from_bits(value: u8) -> Self {
@@ -2578,7 +2613,7 @@ impl DevicePartNumber {
             0x34 => Self::AT86RF215,
             0x35 => Self::AT86RF215IQ,
             0x36 => Self::AT86RF215M,
-            _ => Self::AT86RF215, // Default fallback
+            other => Self::Unknown(other),
         }
     }
 }
@@ -2587,6 +2622,9 @@ impl DevicePartNumber {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum ChipResetCmd {
+    /// No operation (any value other than 0x07).
+    Nop = 0x00,
+    /// Trigger a complete chip reset.
     Reset = 0x07,
 }
 
@@ -2598,9 +2636,7 @@ impl ChipResetCmd {
     pub const fn from_bits(value: u8) -> Self {
         match value {
             0x07 => Self::Reset,
-            _ => Self::Reset,
-            // TODO check if Chip reset needs other enum fields
-            // I think it needs another entry for other to not match to Self::Reset
+            _ => Self::Nop,
         }
     }
 }
@@ -2743,13 +2779,13 @@ mod tests {
         assert_eq!(sync_value, 0);
 
         // Verify we can set writable fields
-        assert_eq!(pmuc.en(), true);
+        assert!(pmuc.en());
         pmuc.set_en(false);
-        assert_eq!(pmuc.en(), false);
+        assert!(!pmuc.en());
 
-        assert_eq!(pmuc.avg(), false);
+        assert!(!pmuc.avg());
         pmuc.set_avg(true);
-        assert_eq!(pmuc.avg(), true);
+        assert!(pmuc.avg());
 
         // The sync field should remain unchanged
         assert_eq!(pmuc.sync(), 0);
@@ -2764,10 +2800,48 @@ mod tests {
             .with_iqsel(false)
             .with_ccfts(true);
 
-        assert_eq!(pmuc.en(), true);
-        assert_eq!(pmuc.avg(), true);
-        assert_eq!(pmuc.fed(), true);
-        assert_eq!(pmuc.iqsel(), false);
-        assert_eq!(pmuc.ccfts(), true);
+        assert!(pmuc.en());
+        assert!(pmuc.avg());
+        assert!(pmuc.fed());
+        assert!(!pmuc.iqsel());
+        assert!(pmuc.ccfts());
+    }
+
+    #[test]
+    fn device_part_number_unknown_for_unrecognised_bytes() {
+        assert_eq!(
+            DevicePartNumber::from_bits(0x34),
+            DevicePartNumber::AT86RF215
+        );
+        assert_eq!(
+            DevicePartNumber::from_bits(0x35),
+            DevicePartNumber::AT86RF215IQ
+        );
+        assert_eq!(
+            DevicePartNumber::from_bits(0x36),
+            DevicePartNumber::AT86RF215M
+        );
+        assert_eq!(
+            DevicePartNumber::from_bits(0xFF),
+            DevicePartNumber::Unknown(0xFF)
+        );
+        assert_eq!(
+            DevicePartNumber::from_bits(0x00),
+            DevicePartNumber::Unknown(0x00)
+        );
+        assert_eq!(DevicePartNumber::Unknown(0xFF).into_bits(), 0xFF);
+        assert_eq!(DevicePartNumber::AT86RF215.into_bits(), 0x34);
+    }
+
+    #[test]
+    fn chip_reset_cmd_nop_default() {
+        // Only 0x07 maps to Reset; everything else is Nop.
+        assert_eq!(ChipResetCmd::from_bits(0x07), ChipResetCmd::Reset);
+        assert_eq!(ChipResetCmd::from_bits(0x00), ChipResetCmd::Nop);
+        assert_eq!(ChipResetCmd::from_bits(0x01), ChipResetCmd::Nop);
+        assert_eq!(ChipResetCmd::from_bits(0xFF), ChipResetCmd::Nop);
+        // Round-trip: Reset.into_bits() == 0x07
+        assert_eq!(ChipResetCmd::Reset.into_bits(), 0x07);
+        assert_eq!(ChipResetCmd::Nop.into_bits(), 0x00);
     }
 }
