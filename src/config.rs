@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::registers::*;
 use serde::{Deserialize, Serialize};
 
@@ -259,6 +261,55 @@ pub struct RadioConfig {
 // Used for reducing empty members in radioConfig struct
 fn is_default<T: Default + PartialEq>(v: &T) -> bool {
     v == &T::default()
+}
+
+/// Daemon socket settings, loaded from the SAME `--config` TOML as the register
+/// config via a second `toml::from_str` pass. Because the crate sets no
+/// `deny_unknown_fields`, the register pass ignores the `[beacon]`/`[rssi]`
+/// tables and this pass ignores all register tables, so register-only
+/// configs keep working (every field stays `None` -> built-in default).
+///
+/// Every field is optional so a CLI flag can override it; the daemon resolves
+/// the effective value as CLI flag > TOML > default.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct NetConfig {
+    pub beacon: BeaconConfig,
+    pub rssi: RssiConfig,
+}
+
+/// `[beacon]` table: the dedicated TX-input socket to send the beacon frames to.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct BeaconConfig {
+    /// Bind the beacon socket at all (default `true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// UDP port to bind on 127.0.0.1 (default `10015`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    /// Full UDP bind address (e.g. "0.0.0.0:10015"); overrides `port`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bind: Option<String>,
+    /// Unix-domain datagram path; overrides `port`/`bind`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uds: Option<PathBuf>,
+}
+
+/// `[rssi]` table: the periodic RSSI push to a UDP port the satellite C3 reads
+/// (one raw int8 dBm byte per send).
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct RssiConfig {
+    /// Enable the push (default: on when `peer` is set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// UDP destination "host:port" to push RSSI to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub peer: Option<String>,
+    /// Interval between pushes in milliseconds (default `1000`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interval_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -2209,5 +2260,56 @@ impl From<&BbcnPmucConfig> for BbcnPmuc {
             .with_fed(c.fed.unwrap_or_else(|| default.fed()))
             .with_iqsel(c.iqsel.unwrap_or_else(|| default.iqsel()))
             .with_ccfts(c.ccfts.unwrap_or_else(|| default.ccfts()))
+    }
+}
+
+#[cfg(test)]
+mod net_config_tests {
+    use super::*;
+
+    // A config file that mixes register tables (consumed by RadioConfig) with
+    // the daemon's [beacon]/[rssi] tables (consumed by NetConfig). The two
+    // deserialize passes must each ignore the other's tables.
+    const MIXED: &str = r#"
+        [bbc0_pc]
+        pt = 1
+
+        [rf09_rxdfe]
+        sr = 10
+
+        [beacon]
+        port = 10015
+        enabled = true
+
+        [rssi]
+        peer = "127.0.0.1:10030"
+        interval_ms = 500
+    "#;
+
+    #[test]
+    fn net_pass_reads_beacon_and_rssi_ignoring_register_tables() {
+        let net: NetConfig = toml::from_str(MIXED).unwrap();
+        assert_eq!(net.beacon.port, Some(10015));
+        assert_eq!(net.beacon.enabled, Some(true));
+        assert_eq!(net.beacon.bind, None);
+        assert_eq!(net.beacon.uds, None);
+        assert_eq!(net.rssi.peer.as_deref(), Some("127.0.0.1:10030"));
+        assert_eq!(net.rssi.interval_ms, Some(500));
+        assert_eq!(net.rssi.enabled, None);
+    }
+
+    #[test]
+    fn register_pass_ignores_beacon_and_rssi_tables() {
+        // The register pass on the same string must not error on [beacon]/[rssi]
+        // and must still pick up the register fields.
+        let radio: RadioConfig = toml::from_str(MIXED).unwrap();
+        assert_eq!(radio.bbc0_pc.pt, Some(1));
+        assert_eq!(radio.rf09_rxdfe.sr, Some(10));
+    }
+
+    #[test]
+    fn register_only_config_yields_default_net() {
+        let net: NetConfig = toml::from_str("[bbc0_pc]\npt = 1\n").unwrap();
+        assert_eq!(net, NetConfig::default());
     }
 }
