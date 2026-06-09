@@ -1,0 +1,49 @@
+# AT86RF215 daemon config - satellite side (oresat-c3).
+#
+# Applied via `at86rf215-daemon --config configs/sat.toml`.
+# Only fields that differ from the register default need to appear here; the
+# RadioConfig deserializer fills in Default::default() for everything else
+# (see src/config.rs).
+#
+# Register defaults that are already correct for this PHY and so are NOT set
+# here: RXBWC.BW=0, RXDFE.RCUT=0, AGCC.AVGS=0, TXDFE.RCUT=0, TXCUTC.LPFCUT=0
+# (80 kHz), FSKC0.MORD=0 (2-FSK)/BT=0, FSKC1.SRATE=0 (50 kHz).
+
+# -- PHY type + baseband: PT=1 = MR-FSK (PT=0 is PHY OFF, a silent failure) -
+# The daemon layers bben/txafcs/fcsfe on top of this at init, but PT must be
+# set here or the modulator never runs.
+[bbc0_pc]
+pt = 1
+
+# -- FSK modulation index: midx=1 * midxs=1 -> h=0.5 (MSK) ------------------
+[bbc0_fskc0]
+midx = 1
+midxs = 1
+
+# -- Direct modulation (datasheet 6.10.4.2: required for all FSK modes) -----
+# Pairs with rf09_txdfe.dm below.
+[bbc0_fskdm]
+en = true
+
+# -- RX digital frontend (Table 6-51 SR + Table 6-60 sub-1GHz, mod index 1/2)
+[rf09_rxdfe]
+sr = 10        # fS = 400 kHz for 50 kHz symbols (reset 0 => 4 MHz = deaf)
+
+[rf09_agcc]
+en = true
+
+[rf09_agcs]
+tgt = 1
+
+# -- TX digital frontend + filter (Table 6-51 SR + Table 6-53 h<=0.75) -----
+[rf09_txdfe]
+sr = 8         # fS = 500 kHz for 50 kHz symbols (v.3)
+dm = true      # direct modulation (pairs with bbc0_fskdm.en)
+
+[rf09_txcutc]
+paramp = 3     # 32 us PA ramp (reset 0 = 4 us)
+
+# -- Sub-1 GHz PA ----------------------------------------------------------
+[rf09_pac]
+txpwr = 0
+pacur = 3

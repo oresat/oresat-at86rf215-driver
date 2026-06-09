@@ -1,5 +1,5 @@
-use crate::registers::*;
 use crate::config::*;
+use crate::registers::*;
 
 #[derive(Debug, Clone)]
 pub struct Radio {
@@ -27,8 +27,11 @@ pub struct Radio {
     // RF09 Sub-1GHz Radio Registers (0x0100-0x0128)
     // =========================================================================
 
-    // Status and interrupts
-    pub rf09_irqs: ReadOnly<RfnIrqs, 0x0100, 1>,
+    // Status and interrupts.
+    // IRQS is at the *global* low address space (0x00..0x03), one byte per
+    // block — reading it auto-clears the bits. IRQM is the per-block mask
+    // at 0x100/0x200/0x300/0x400.
+    pub rf09_irqs: ReadOnly<RfnIrqs, 0x0000, 1>,
     pub rf09_irqm: ReadWrite<RfnIrqm, 0x0100, 1>,
     pub rf09_state: ReadOnly<RfnState, 0x0102, 1>,
 
@@ -46,6 +49,7 @@ pub struct Radio {
     pub rf09_rxdfe: ReadWrite<RfnRxdfe, 0x010A, 1>,
     pub rf09_agcc: ReadWrite<RfnAgcc, 0x010B, 1>,
     pub rf09_agcs: ReadWrite<RfnAgcs, 0x010C, 1>,
+    pub rf09_rssi: ReadOnly<RfnRssi, 0x010D, 1>,
 
     // Energy detection
     pub rf09_edc: ReadWrite<RfnEdc, 0x010E, 1>,
@@ -75,8 +79,8 @@ pub struct Radio {
     // RF24 2.4GHz Radio Registers (0x0200-0x0228)
     // =========================================================================
 
-    // Status and interrupts
-    pub rf24_irqs: ReadOnly<RfnIrqs, 0x0200, 1>,
+    // Status and interrupts (see RF09 above for the address-space split).
+    pub rf24_irqs: ReadOnly<RfnIrqs, 0x0001, 1>,
     pub rf24_irqm: ReadWrite<RfnIrqm, 0x0200, 1>,
     pub rf24_state: ReadOnly<RfnState, 0x0202, 1>,
 
@@ -94,6 +98,7 @@ pub struct Radio {
     pub rf24_rxdfe: ReadWrite<RfnRxdfe, 0x020A, 1>,
     pub rf24_agcc: ReadWrite<RfnAgcc, 0x020B, 1>,
     pub rf24_agcs: ReadWrite<RfnAgcs, 0x020C, 1>,
+    pub rf24_rssi: ReadOnly<RfnRssi, 0x020D, 1>,
 
     // Energy detection
     pub rf24_edc: ReadWrite<RfnEdc, 0x020E, 1>,
@@ -123,8 +128,9 @@ pub struct Radio {
     // BBC0 Sub-1GHz Baseband Registers (0x0300-0x0394)
     // =========================================================================
 
-    // Status and interrupts
-    pub bbc0_irqs: ReadOnly<BbcnIrqs, 0x0302, 1>,
+    // Status and interrupts. BBC0_IRQS lives at 0x0002, not at the BBC0
+    // block; only BBC0_PS (PHY status) is at 0x0302.
+    pub bbc0_irqs: ReadOnly<BbcnIrqs, 0x0002, 1>,
     pub bbc0_irqm: ReadWrite<BbcnIrqm, 0x0300, 1>,
     pub bbc0_ps: ReadOnly<BbcnPs, 0x0302, 1>,
 
@@ -215,8 +221,8 @@ pub struct Radio {
     // BBC1 2.4GHz Baseband Registers (0x0400-0x0494)
     // =========================================================================
 
-    // Status and interrupts
-    pub bbc1_irqs: ReadOnly<BbcnIrqs, 0x0402, 1>,
+    // Status and interrupts (see BBC0 above for the address-space split).
+    pub bbc1_irqs: ReadOnly<BbcnIrqs, 0x0003, 1>,
     pub bbc1_irqm: ReadWrite<BbcnIrqm, 0x0400, 1>,
     pub bbc1_ps: ReadOnly<BbcnPs, 0x0402, 1>,
 
@@ -339,6 +345,7 @@ impl Radio {
             rf09_rxdfe: ReadWrite::new(RfnRxdfe::new()),
             rf09_agcc: ReadWrite::new(RfnAgcc::new()),
             rf09_agcs: ReadWrite::new(RfnAgcs::new()),
+            rf09_rssi: ReadOnly::new(RfnRssi::new()),
             rf09_edc: ReadWrite::new(RfnEdc::new()),
             rf09_edd: ReadWrite::new(RfnEdd::new()),
             rf09_edv: ReadOnly::new(RfnEdv::new()),
@@ -367,6 +374,7 @@ impl Radio {
             rf24_rxdfe: ReadWrite::new(RfnRxdfe::new()),
             rf24_agcc: ReadWrite::new(RfnAgcc::new()),
             rf24_agcs: ReadWrite::new(RfnAgcs::new()),
+            rf24_rssi: ReadOnly::new(RfnRssi::new()),
             rf24_edc: ReadWrite::new(RfnEdc::new()),
             rf24_edd: ReadWrite::new(RfnEdd::new()),
             rf24_edv: ReadOnly::new(RfnEdv::new()),
@@ -563,6 +571,7 @@ impl Radio {
         self.bbc0_amedt.value = BbcnAmedt::from(&config.bbc0_amedt);
         self.bbc0_amaackpd.value = BbcnAmaackpd::from(&config.bbc0_amaackpd);
         self.bbc0_amaackt.value = BbcnAmaackt::from(&config.bbc0_amaackt);
+        self.bbc0_pc.value = BbcnPc::from(&config.bbc0_pc);
         self.bbc0_fskc0.value = BbcnFskc0::from(&config.bbc0_fskc0);
         self.bbc0_fskc1.value = BbcnFskc1::from(&config.bbc0_fskc1);
         self.bbc0_fskc2.value = BbcnFskc2::from(&config.bbc0_fskc2);
@@ -597,6 +606,7 @@ impl Radio {
         self.bbc1_amedt.value = BbcnAmedt::from(&config.bbc1_amedt);
         self.bbc1_amaackpd.value = BbcnAmaackpd::from(&config.bbc1_amaackpd);
         self.bbc1_amaackt.value = BbcnAmaackt::from(&config.bbc1_amaackt);
+        self.bbc1_pc.value = BbcnPc::from(&config.bbc1_pc);
         self.bbc1_fskc0.value = BbcnFskc0::from(&config.bbc1_fskc0);
         self.bbc1_fskc1.value = BbcnFskc1::from(&config.bbc1_fskc1);
         self.bbc1_fskc2.value = BbcnFskc2::from(&config.bbc1_fskc2);
@@ -669,6 +679,7 @@ impl Radio {
             bbc0_amedt: BbcnAmedtConfig::from(&self.bbc0_amedt.value),
             bbc0_amaackpd: BbcnAmaackpdConfig::from(&self.bbc0_amaackpd.value),
             bbc0_amaackt: BbcnAmaacktConfig::from(&self.bbc0_amaackt.value),
+            bbc0_pc: BbcnPcConfig::from(&self.bbc0_pc.value),
             bbc0_fskc0: BbcnFskc0Config::from(&self.bbc0_fskc0.value),
             bbc0_fskc1: BbcnFskc1Config::from(&self.bbc0_fskc1.value),
             bbc0_fskc2: BbcnFskc2Config::from(&self.bbc0_fskc2.value),
@@ -703,6 +714,7 @@ impl Radio {
             bbc1_amedt: BbcnAmedtConfig::from(&self.bbc1_amedt.value),
             bbc1_amaackpd: BbcnAmaackpdConfig::from(&self.bbc1_amaackpd.value),
             bbc1_amaackt: BbcnAmaacktConfig::from(&self.bbc1_amaackt.value),
+            bbc1_pc: BbcnPcConfig::from(&self.bbc1_pc.value),
             bbc1_fskc0: BbcnFskc0Config::from(&self.bbc1_fskc0.value),
             bbc1_fskc1: BbcnFskc1Config::from(&self.bbc1_fskc1.value),
             bbc1_fskc2: BbcnFskc2Config::from(&self.bbc1_fskc2.value),
@@ -727,17 +739,17 @@ impl Radio {
 // Frame Buffer Addresses
 // =============================================================================
 
-/// TX Frame Buffer Start (Sub-1GHz)
-pub const BBC0_FBTXS: u16 = 0x2000;
-
 /// RX Frame Buffer Start (Sub-1GHz)
-pub const BBC0_FBRXS: u16 = 0x3000;
+pub const BBC0_FBRXS: u16 = 0x2000;
 
-/// TX Frame Buffer Start (2.4GHz)
-pub const BBC1_FBTXS: u16 = 0x2800;
+/// TX Frame Buffer Start (Sub-1GHz)
+pub const BBC0_FBTXS: u16 = 0x2800;
 
 /// RX Frame Buffer Start (2.4GHz)
-pub const BBC1_FBRXS: u16 = 0x3800;
+pub const BBC1_FBRXS: u16 = 0x3000;
+
+/// TX Frame Buffer Start (2.4GHz)
+pub const BBC1_FBTXS: u16 = 0x3800;
 
 // =============================================================================
 // Tests

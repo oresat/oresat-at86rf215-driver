@@ -1,0 +1,14 @@
+[target.arm-unknown-linux-musleabihf]
+# Static musl build for Pi B+ / Zero (ARMv6 + VFPv2).
+linker = "armv6-linux-musleabihf-gcc"
+rustflags = [
+    "-C", "target-cpu=arm1176jzf-s",
+    "-C", "target-feature=+crt-static",
+]
+
+
+[target.aarch64-unknown-linux-gnu]
+# Pi 5
+linker = "aarch64-linux-gnu-gcc"
+rustflags = ["-C", "target-cpu=cortex-a76"]
+
