@@ -8,8 +8,19 @@
 //! - **RX socket** (default UDP `127.0.0.1:10021`; `--rx-peer <addr>` to forward
 //!   to a different host, or `--rx-uds <path>` for UDS):
 //!   frames received by the radio are forwarded here as datagrams.
+//! - **Beacon socket** (opt-in; enable with `--beacon-port` / `--beacon-bind` /
+//!   `--beacon-uds` or a `[beacon]` config table - default bind UDP
+//!   `127.0.0.1:10015`, `--no-beacon` or
+//!   `[beacon].enabled = false` forces it off): a second TX input.
 //! - **Telemetry socket** (optional): periodic CBOR-encoded `CommState` snapshots
 //!   for the TUI viewer. UDP only.
+//! - **RSSI reporting** (optional, `--rssi-peer <addr>`): the daemon pushes the latest
+//!   RSSI as a single raw int8 dBm byte (127 = invalid) to that UDP destination
+//!   every `--rssi-ms` (default 1000).
+//!
+//! The beacon port, RSSI peer/interval, and their enable flags can also be set
+//! from the `--config` TOML (`[beacon]` / `[rssi]` tables) a CLI flag overrides
+//! the TOML value.
 //!
 //!
 //! ## Running without hardware
@@ -46,6 +57,7 @@ const TIMER: Token = Token(1);
 #[allow(dead_code)] // reserved for future mio-based signal source
 const SIGNAL: Token = Token(2);
 const GPIO_IRQ: Token = Token(3);
+const BEACON_SOCKET: Token = Token(4);
 
 // -- CLI ---------------------------------------------------------------------
 
@@ -85,9 +97,47 @@ struct Args {
     #[arg(long)]
     rx_uds: Option<PathBuf>,
 
+    /// UDP port to receive beacon datagrams on (default bind 10015, the OreSat
+    /// C3 beacon-downlink). Setting this (or any `--beacon-*` flag /
+    /// `[beacon]` config field) enables the optional (default off) beacon socket.
+    /// Overrides `[beacon].port` in `--config`. Ignored when a beacon UDS path
+    /// is set.
+    #[arg(long)]
+    beacon_port: Option<u16>,
+
+    /// Full UDP bind address for the beacon socket, example: "0.0.0.0:10015".
+    /// Overrides `--beacon-port` (which only ever binds 127.0.0.1). Overrides
+    /// `[beacon].bind` in `--config`. Ignored when a beacon UDS path is set.
+    #[arg(long)]
+    beacon_bind: Option<String>,
+
+    /// Unix-domain datagram path for beacon input (overrides
+    /// `--beacon-port`/`--beacon-bind` and `[beacon]` in `--config`).
+    #[arg(long)]
+    beacon_uds: Option<PathBuf>,
+
+    /// Disable the beacon socket (overrides `[beacon].enabled` in `--config`).
+    #[arg(long)]
+    no_beacon: bool,
+
     /// Optional telemetry destination (example: "127.0.0.1:10035").
     #[arg(long)]
     telemetry: Option<String>,
+
+    /// UDP destination for the periodic RSSI push, example: "127.0.0.1:10030".
+    /// The satellite C3 reads this single int8 dBm byte (127 = invalid).
+    /// Overrides `[rssi].peer` in `--config`.
+    #[arg(long)]
+    rssi_peer: Option<String>,
+
+    /// Interval in milliseconds between RSSI pushes to `--rssi-peer` (default
+    /// 1000). Decoupled from `--telemetry-ms`. Overrides `[rssi].interval_ms`.
+    #[arg(long)]
+    rssi_ms: Option<u64>,
+
+    /// Disable the RSSI push (overrides `[rssi].enabled` in `--config`).
+    #[arg(long)]
+    no_rssi: bool,
 
     /// SPI device path (example: /dev/spidev0.0).
     #[arg(long, default_value = "/dev/spidev0.0")]
@@ -362,13 +412,75 @@ fn main() -> io::Result<()> {
     };
 
     // -- TOML config (optional) ---------------------------------------
+    // One reader for both registers and beacon/RSSI socket settings
+    let mut net = oresat_at86rf215_driver::config::NetConfig::default();
     if let Some(ref path) = args.config {
         let contents = std::fs::read_to_string(path)?;
         let config: oresat_at86rf215_driver::config::RadioConfig =
             toml::from_str(&contents).map_err(io::Error::other)?;
         radio.apply_config(&config);
+        net = toml::from_str(&contents).map_err(io::Error::other)?;
         eprintln!("config loaded: {}", path);
     }
+
+    // -- beacon + RSSI socket settings (CLI flag > TOML > default) -------
+    // Beacon bind: --beacon-bind overides (any address), else 127.0.0.1:<port>,
+    // where the port is --beacon-port, else [beacon].port, else 10015.
+    let beacon_bind = args.beacon_bind.clone().or(net.beacon.bind.clone());
+    let beacon_uds = args.beacon_uds.clone().or(net.beacon.uds.clone());
+    let beacon_port = args.beacon_port.or(net.beacon.port).unwrap_or(10015);
+    // The beacon socket is optional: it binds only when explicitly configured
+    // (a --beacon-* flag or any [beacon] field). 
+    // CLI --no-beacon, or [beacon].enabled forces it off/on regardless.
+    let beacon_configured = args.beacon_port.is_some()
+        || args.beacon_bind.is_some()
+        || args.beacon_uds.is_some()
+        || net.beacon.port.is_some()
+        || net.beacon.bind.is_some()
+        || net.beacon.uds.is_some();
+    let beacon_enabled = !args.no_beacon && net.beacon.enabled.unwrap_or(beacon_configured);
+    let beacon_addr: SocketAddr = match beacon_bind.as_ref() {
+        Some(s) => s.parse().map_err(|e| {
+            io::Error::new(io::ErrorKind::InvalidInput, format!("beacon bind {s}: {e}"))
+        })?,
+        None => SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), beacon_port),
+    };
+
+    let rssi_peer = args.rssi_peer.clone().or(net.rssi.peer.clone());
+    let rssi_ms = args.rssi_ms.or(net.rssi.interval_ms).unwrap_or(1000);
+    // RSSI push is on when a peer is resolved and not disabled. An explicit
+    // [rssi].enabled=true with no peer can't push - warn rather than silently no-op.
+    if !args.no_rssi && net.rssi.enabled == Some(true) && rssi_peer.is_none() {
+        eprintln!("warning: [rssi].enabled is true but no rssi peer set - RSSI push disabled");
+    }
+    let rssi_enabled =
+        !args.no_rssi && net.rssi.enabled.unwrap_or(rssi_peer.is_some()) && rssi_peer.is_some();
+
+    // -- beacon listener socket (optional) ------------------------------
+    let mut beacon_sock: Option<TxListener> = if beacon_enabled {
+        Some(match beacon_uds.as_ref() {
+            Some(path) => {
+                remove_stale_uds(path)?;
+                TxListener::Uds(UnixDatagram::bind(path)?)
+            }
+            None => TxListener::Udp(UdpSocket::bind(beacon_addr)?),
+        })
+    } else {
+        None
+    };
+    if let Some(ref mut b) = beacon_sock {
+        b.register(poll.registry(), BEACON_SOCKET)?;
+    }
+
+    // -- RSSI push socket (optional) ------------------------------------
+    let rssi_sock = rssi_enabled.then(|| {
+        let sock = std::net::UdpSocket::bind("0.0.0.0:0").expect("bind rssi");
+        // connect() on a UDP addr does not need a live peer; a down peer only
+        // shows up as ECONNREFUSED on send (logged, non-fatal - see TIMER arm).
+        sock.connect(rssi_peer.as_ref().expect("rssi peer set when enabled"))
+            .expect("connect rssi");
+        sock
+    });
 
     // -- radio initialisation (hardware only) ---------------------------
     if let Some(ref mut dev) = spidev {
@@ -422,11 +534,30 @@ fn main() -> io::Result<()> {
     let mut acc_irqs: u8 = 0;
     let mut last_status = std::time::Instant::now();
 
+    // Beacons received here are queued onto the same TX backlog as `tx_sock`.
+    let mut beacon_count: u64 = 0;
+    // RSSI push rate is independent of the telemetry tick (see TIMER arm).
+    let mut last_rssi_push = std::time::Instant::now();
+    // Tracks whether the RSSI peer is currently unreachable, so a consumer that
+    // is simply not up yet does not flood stderr with one error per push
+    // log only the transitions into and out of the failed state.
+    let mut rssi_peer_down = false;
+
     eprintln!(
         "listening: TX on {}, RX forwarded to {}",
         tx_sock.describe(&tx_addr.to_string(), &args.tx_uds),
         rx_sock.describe(&rx_peer, &args.rx_uds),
     );
+    if let Some(ref b) = beacon_sock {
+        eprintln!("listening: beacon on {}", b.describe(&beacon_addr.to_string(), &beacon_uds));
+    }
+    if rssi_sock.is_some() {
+        eprintln!(
+            "rssi push -> {} every {} ms",
+            rssi_peer.as_deref().unwrap_or("?"),
+            rssi_ms,
+        );
+    }
 
     // Clear any IRQ pending from the RX-enable->IRQ-arm window before the loop.
     // The AT86RF215 IRQ pin is level-held: it stays asserted while any enabled
@@ -478,8 +609,8 @@ fn main() -> io::Result<()> {
         // Check for SIGINT before blocking.
         if signal_flag.load(std::sync::atomic::Ordering::Relaxed) {
             eprintln!(
-                "\nSIGINT received - shutting down (tx={}, rx={}, crc_fail={}, ticks={})",
-                stats.tx_count, stats.rx_count, stats.rx_crc_fail, stats.ticks,
+                "\nSIGINT received - shutting down (tx={}, rx={}, crc_fail={}, beacons={}, ticks={})",
+                stats.tx_count, stats.rx_count, stats.rx_crc_fail, beacon_count, stats.ticks,
             );
             return Ok(());
         }
@@ -528,6 +659,42 @@ fn main() -> io::Result<()> {
                         &mut stats,
                         !args.no_carrier_sense,
                     )?;
+                }
+
+                BEACON_SOCKET => {
+                    // Beacons are a second TX input: drain them onto the SAME
+                    // transmit backlog as the TX socket.
+                    if let Some(ref beacon_sock) = beacon_sock {
+                        loop {
+                            match beacon_sock.recv(&mut pkt_buf) {
+                                Ok(n) if n > 0 => {
+                                    let frame = &pkt_buf[..n];
+                                    let preview: String = frame
+                                        .iter()
+                                        .take(16)
+                                        .map(|b| format!("{:02X}", b))
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
+                                    let suffix = if frame.len() > 16 { "..." } else { "" };
+                                    eprintln!("BEACON socket: {} B from client [{}{}]", n, preview, suffix);
+                                    beacon_count += 1;
+                                    link.enqueue(frame);
+                                }
+                                Ok(_) => break,
+                                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                                Err(e) => return Err(e),
+                            }
+                        }
+                        pump_tx(
+                            &mut link,
+                            &mut radio,
+                            &mut spidev,
+                            &rx_sock,
+                            &telemetry_sock,
+                            &mut stats,
+                            !args.no_carrier_sense,
+                        )?;
+                    }
                 }
 
                 TIMER => {
@@ -583,6 +750,42 @@ fn main() -> io::Result<()> {
                         let _ = spi::read_register(dev, &mut radio.rf09_edv);
                         let _ = spi::read_register(dev, &mut radio.rf09_agcs);
                         stats.update_rssi(radio.rf09_rssi.value.rssi());
+                    }
+
+                    // RSSI push to the satellite C3: own rate (--rssi-ms). 
+                    // stats.rssi_last was just refreshed above (and
+                    // holds the last valid reading through TX, where rf09_rssi
+                    // reads 127). One raw int8 dBm byte (see encode_rssi).
+                    if let Some(ref rs) = rssi_sock {
+                        if last_rssi_push.elapsed() >= Duration::from_millis(rssi_ms) {
+                            match rs.send(&encode_rssi(&stats)) {
+                                Ok(_) => {
+                                    if rssi_peer_down {
+                                        // Peer came back (a listener was started).
+                                        eprintln!("RSSI: push to rssi peer recovered");
+                                        rssi_peer_down = false;
+                                    }
+                                }
+                                Err(e) => {
+                                    // A down/absent peer returns ECONNREFUSED (ICMP
+                                    // port unreachable) on every push. Log only the
+                                    // first failure so a consumer that is simply not
+                                    // up yet does not flood stderr once per second;
+                                    // never crash.
+                                    if !rssi_peer_down {
+                                        eprintln!(
+                                            "{}",
+                                            color(
+                                                &format!("RSSI: push to rssi peer failed: {e} (suppressing repeats until it recovers)"),
+                                                "31",
+                                            ),
+                                        );
+                                        rssi_peer_down = true;
+                                    }
+                                }
+                            }
+                            last_rssi_push = std::time::Instant::now();
+                        }
                     }
 
                     if let Some(ref ts) = telemetry_sock {
@@ -730,6 +933,21 @@ fn init_radio(
     );
     spi::apply_channel_rf09(dev, radio, pll)?;
 
+    // Report the external front-end mode just flushed (RF09_PADFE) so a config
+    // that forgot to enable it (0 = FE disabled -> external PA/LNA never keyed)
+    // is obvious at startup rather than looking like a weak link.
+    let fe = radio.rf09_padfe.value.padfe();
+    eprintln!(
+        "front-end: RF09_PADFE={} ({})",
+        fe,
+        match fe {
+            0 => "disabled - external PA/LNA NOT keyed",
+            1 => "FE_MODE_4",
+            2 => "FE_MODE_5",
+            _ => "FE_MODE_6",
+        },
+    );
+
     // 4. Enable BBC0 baseband + auto-FCS + FCS filter.
     //    These are layered on top of whatever the TOML config set.
     radio.bbc0_pc.value = radio
@@ -795,6 +1013,7 @@ fn write_rf09_config(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<
     bw.add(&mut radio.rf09_txcutc);
     bw.add(&mut radio.rf09_txdfe);
     bw.add(&mut radio.rf09_pac);
+    bw.add(&mut radio.rf09_padfe);
     for cmd in bw.generate_commands() {
         dev.write_all(&cmd)?;
     }
@@ -1157,6 +1376,22 @@ fn synthetic_bbc(tick: u64, tx_count: u64) -> BbcStatus {
         txfl: if tx_count > 0 { 64 } else { 0 },
         cnt: tick as u32,
     }
+}
+
+/// Encode the current RSSI for the `--rssi-peer`.
+///
+/// The format is a single raw int8 dBm byte (127 = invalid).
+///
+/// In dry-run there is no SPI read, so `stats.rssi_last` stays 127 until the
+/// first loopback RX; substitute a synthetic wandering value so the feed is
+/// non-empty.
+fn encode_rssi(stats: &RadioStats) -> [u8; 1] {
+    let rssi = if stats.rssi_last == 127 {
+        synthetic_rf(stats.ticks).rssi
+    } else {
+        stats.rssi_last
+    };
+    [rssi as u8]
 }
 
 fn io_err<E: std::error::Error + Send + Sync + 'static>(e: E) -> io::Error {
