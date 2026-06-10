@@ -1,6 +1,6 @@
 # AT86RF215 daemon config - satellite side (oresat-c3).
 #
-# Applied via `at86rf215-daemon --config configs/sat.toml`.
+# Applied via `uhf_daemon --config configs/sat.toml`.
 # Only fields that differ from the register default need to appear here; the
 # RadioConfig deserializer fills in Default::default() for everything else
 # (see src/config.rs).
@@ -72,3 +72,11 @@ port = 10015
 peer = "127.0.0.1:10030"
 interval_ms = 5000
 # enabled = false
+
+[spi]
+dev = "/dev/spidev0.0"
+hz  = 1000000
+
+[gpio]
+chip = "/dev/gpiochip3"
+line = 30

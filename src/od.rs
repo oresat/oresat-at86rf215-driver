@@ -45,9 +45,11 @@ pub mod sub {
     pub const RSSI_SAMPLES: u8 = 9;
     pub const RSSI_MEAN: u8 = 10;
     pub const TICKS: u8 = 11;
+    pub const TRXERR_COUNT: u8 = 12;
+    pub const RADIO_REINITS: u8 = 13;
 
     /// Highest valid subindex for the radio-stats record.
-    pub const HIGHEST: u8 = TICKS;
+    pub const HIGHEST: u8 = RADIO_REINITS;
 }
 
 /// Access mode for an OD entry. Mirrors the CANopen spec.
@@ -114,6 +116,8 @@ pub fn radio_stats_entry(stats: &RadioStats, index: u16, sub: u8) -> Option<OdEn
             OdValue::F64(stats.rssi_mean().unwrap_or(f64::NAN)),
         ),
         sub::TICKS => ("ticks", OdValue::U64(stats.ticks)),
+        sub::TRXERR_COUNT => ("trxerr_count", OdValue::U64(stats.trxerr_count)),
+        sub::RADIO_REINITS => ("radio_reinits", OdValue::U64(stats.radio_reinits)),
         _ => return None,
     };
     Some(OdEntry {
@@ -232,6 +236,8 @@ mod tests {
             sub::RSSI_SAMPLES,
             sub::RSSI_MEAN,
             sub::TICKS,
+            sub::TRXERR_COUNT,
+            sub::RADIO_REINITS,
         ] {
             assert!(
                 radio_stats_entry(&stats, RADIO_STATS_INDEX, s).is_some(),

@@ -1,6 +1,6 @@
 # AT86RF215 daemon config - ground station side (alongside yamcs).
 #
-# Applied via `at86rf215-daemon --config configs/ground.toml`.
+# Applied via `uhf_daemon --config configs/ground.toml`.
 # Only fields that differ from the register default need to appear here
 # (see src/config.rs)
 # 

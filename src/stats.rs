@@ -24,6 +24,14 @@ pub struct RadioStats {
     pub rx_crc_fail: u64,
     /// TX errors (SPI failures, FIFO overflows, etc.).
     pub tx_errors: u64,
+    /// Transceiver errors observed (RF09_IRQS.TRXERR - PLL lock faults).
+    pub trxerr_count: u64,
+    /// Radio re-initialisations performed to recover from a fault.
+    pub radio_reinits: u64,
+    /// BATLOW (supply-brownout) interrupts observed (RF09_IRQS.BATLOW).
+    pub batlow_count: u64,
+    /// A BATLOW has been seen since the last successful reflash. 
+    pub batlow_pending: bool,
 
     // -- RSSI tracking --------------------------------------------------
     /// Most recent RSSI reading (dBm, 127 = invalid).
@@ -50,6 +58,10 @@ impl RadioStats {
             rx_count: 0,
             rx_crc_fail: 0,
             tx_errors: 0,
+            trxerr_count: 0,
+            radio_reinits: 0,
+            batlow_count: 0,
+            batlow_pending: false,
             rssi_last: 127, // invalid
             rssi_min: 127,
             rssi_max: -128,
@@ -67,6 +79,29 @@ impl RadioStats {
     /// Record a TX error.
     pub fn record_tx_error(&mut self) {
         self.tx_errors += 1;
+    }
+
+    /// Record a transceiver error (TRXERR / PLL lock fault).
+    pub fn record_trxerr(&mut self) {
+        self.trxerr_count += 1;
+    }
+
+    /// Record a radio re-initialisation performed to recover from a fault.
+    pub fn record_reinit(&mut self) {
+        self.radio_reinits += 1;
+    }
+
+    /// Record a BATLOW (supply-brownout) interrupt and mark the config suspect
+    /// until the next successful reflash clears it via [`Self::clear_batlow`].
+    pub fn record_batlow(&mut self) {
+        self.batlow_count += 1;
+        self.batlow_pending = true;
+    }
+
+    /// Clear the config-suspect flag once the chip's registers are known good
+    /// again (a successful reflash, or the chip observed still operational).
+    pub fn clear_batlow(&mut self) {
+        self.batlow_pending = false;
     }
 
     /// Record a successfully received frame with its RSSI.

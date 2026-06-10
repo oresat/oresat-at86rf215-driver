@@ -972,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "oresat-at86rf215-driver"
-version = "0.4.1"
+version = "0.4.5"
 dependencies = [
  "bitfield-struct",
  "ciborium",
