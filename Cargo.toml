@@ -21,12 +21,6 @@ toml = "1.1.2"
 [features]
 tui = ["dep:ratatui", "dep:crossterm"]
 
-# Flight binary profile: LTO + single codegen unit + strip for a small,
-# optimised image on the Pi-Zero-class target. panic is deliberately left as
-# "unwind" - the config loader uses catch_unwind to turn an out-of-range register
-# value into a clean error rather than an abort (which under a supervisor would
-# just restart-loop with no diagnostic). Revisit panic="abort" once per-field
-# config range validation removes that dependency.
 [profile.release]
 opt-level = 3
 lto = "thin"
