@@ -2,6 +2,21 @@
 name = "oresat-at86rf215-driver"
 version = "0.4.5"
 edition = "2024"
+description = "Microchip AT86RF215 radio daemon"
+authors = ["Oresat"]
+
+[package.metadata.deb]
+depends = "libc6 (>= 2.34), libgcc-s1 (>= 4.3)"
+maintainer-scripts = "debian/"
+systemd-units = [
+    { unit-name = "uhf" },
+]
+assets = [
+    ["target/release/uhf_daemon", "usr/bin/", "755"],
+    ["configs/sat.toml", "etc/oresat/", "644"],
+]
+conf-files = ["/etc/oresat/sat.toml"]
+
 
 [dependencies]
 bitfield-struct = "0.13.0"
@@ -34,3 +49,5 @@ required-features = ["tui"]
 [[example]]
 name = "uhf_tui"
 required-features = ["tui"]
+
+

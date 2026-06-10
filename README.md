@@ -12,4 +12,7 @@ uhf_daemon --config ground.toml --tx-bind 0.0.0.0:10025 --rx-peer <yamcs-host-ip
 # Satellite
 sudo uhf_daemon --rx-port 10025 --tx-port 10016 --config sat.toml
 ```
-
+### Build .deb package
+```
+cargo deb --target=armv7-unknown-linux-gnueabihf
+```
