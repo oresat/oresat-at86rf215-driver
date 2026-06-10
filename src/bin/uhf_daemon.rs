@@ -8,8 +8,19 @@
 //! - **RX socket** (default UDP `127.0.0.1:10021`; `--rx-peer <addr>` to forward
 //!   to a different host, or `--rx-uds <path>` for UDS):
 //!   frames received by the radio are forwarded here as datagrams.
+//! - **Beacon socket** (opt-in; enable with `--beacon-port` / `--beacon-bind` /
+//!   `--beacon-uds` or a `[beacon]` config table - default bind UDP
+//!   `127.0.0.1:10015`, `--no-beacon` or
+//!   `[beacon].enabled = false` forces it off): a second TX input.
 //! - **Telemetry socket** (optional): periodic CBOR-encoded `CommState` snapshots
 //!   for the TUI viewer. UDP only.
+//! - **RSSI reporting** (optional, `--rssi-peer <addr>`): the daemon pushes the latest
+//!   RSSI as a single raw int8 dBm byte (127 = invalid) to that UDP destination
+//!   after every received frame.
+//!
+//! The beacon port, RSSI peer, and their enable flags can also be set
+//! from the `--config` TOML (`[beacon]` / `[rssi]` tables) a CLI flag overrides
+//! the TOML value.
 //!
 //!
 //! ## Running without hardware
@@ -34,10 +45,17 @@ use oresat_at86rf215_driver::{
     comm::{BbcStatus, CommState, RfStatus, RxPacket},
     freq::{Band, PllSettings},
     radio::Radio,
-    registers::{BbcnTxfl, EnergyDetectionMode, RfnCmd, TransceiverCmd},
+    registers::{
+        BbcnTxfl, DevicePartNumber, EnergyDetectionMode, RfnCmd, RfnIrqm, TransceiverCmd,
+        TransceiverState,
+    },
     spi::{self, Bbc},
     stats::RadioStats,
 };
+
+/// Maximum RF frame the chip can buffer/transmit: BBCn_TXFL/FBL are 11-bit, so
+/// payload + FCS must not exceed 2047.
+const MAX_RF_FRAME: usize = 2047;
 
 // -- mio tokens --------------------------------------------------------------
 
@@ -46,13 +64,14 @@ const TIMER: Token = Token(1);
 #[allow(dead_code)] // reserved for future mio-based signal source
 const SIGNAL: Token = Token(2);
 const GPIO_IRQ: Token = Token(3);
+const BEACON_SOCKET: Token = Token(4);
 
 // -- CLI ---------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "at86rf215-daemon",
-    about = "AT86RF215 radio <-> UDP/UDS daemon"
+    name = "uhf_daemon",
+    about = "AT86RF215 UHF radio <-> UDP/UDS daemon"
 )]
 struct Args {
     /// UDP port to receive TX datagrams on (ignored when `--tx-uds` is set).
@@ -85,18 +104,51 @@ struct Args {
     #[arg(long)]
     rx_uds: Option<PathBuf>,
 
+    /// UDP port to receive beacon datagrams on (default bind 10015, the OreSat
+    /// C3 beacon-downlink). Setting this (or any `--beacon-*` flag /
+    /// `[beacon]` config field) enables the optional (default off) beacon socket.
+    /// Overrides `[beacon].port` in `--config`. Ignored when a beacon UDS path
+    /// is set.
+    #[arg(long)]
+    beacon_port: Option<u16>,
+
+    /// Full UDP bind address for the beacon socket, example: "0.0.0.0:10015".
+    /// Overrides `--beacon-port` (which only ever binds 127.0.0.1). Overrides
+    /// `[beacon].bind` in `--config`. Ignored when a beacon UDS path is set.
+    #[arg(long)]
+    beacon_bind: Option<String>,
+
+    /// Unix-domain datagram path for beacon input (overrides
+    /// `--beacon-port`/`--beacon-bind` and `[beacon]` in `--config`).
+    #[arg(long)]
+    beacon_uds: Option<PathBuf>,
+
+    /// Disable the beacon socket (overrides `[beacon].enabled` in `--config`).
+    #[arg(long)]
+    no_beacon: bool,
+
     /// Optional telemetry destination (example: "127.0.0.1:10035").
     #[arg(long)]
     telemetry: Option<String>,
 
-    /// SPI device path (example: /dev/spidev0.0).
-    #[arg(long, default_value = "/dev/spidev0.0")]
-    spi: String,
+    /// UDP destination for the per-frame RSSI push, example: "127.0.0.1:10030".
+    /// The satellite C3 reads this single int8 dBm byte (127 = invalid), sent
+    /// after every received frame. Overrides `[rssi].peer` in `--config`.
+    #[arg(long)]
+    rssi_peer: Option<String>,
 
-    /// SPI clock rate in Hz. Lower (example: 1_000_000) if the Pi's aux SPI
-    /// (spidev1.x) misreads register values.
-    #[arg(long, default_value_t = spi::DEFAULT_SPI_HZ)]
-    spi_hz: u32,
+    /// Disable the RSSI push (overrides `[rssi].enabled` in `--config`).
+    #[arg(long)]
+    no_rssi: bool,
+
+    /// SPI device path (default /dev/spidev0.0). Overrides `[spi].dev`.
+    #[arg(long)]
+    spi: Option<String>,
+
+    /// SPI clock rate in Hz (default 1_000_000). Lower if the Pi's aux SPI
+    /// (spidev1.x) misreads register values. Overrides `[spi].hz`.
+    #[arg(long)]
+    spi_hz: Option<u32>,
 
     /// Run without hardware - TX packets are looped back as RX.
     #[arg(long)]
@@ -106,20 +158,22 @@ struct Args {
     #[arg(long, default_value = "100")]
     telemetry_ms: u64,
 
-    /// GPIO chip path for the radio IRQ line.
-    #[arg(long, default_value = "/dev/gpiochip0")]
-    gpio_chip: String,
+    /// GPIO chip path for the radio IRQ line (default /dev/gpiochip0).
+    /// Overrides `[gpio].chip`.
+    #[arg(long)]
+    gpio_chip: Option<String>,
 
-    /// GPIO line number for the radio IRQ (rising edge).
-    #[arg(long, default_value = "25")]
-    gpio_line: u32,
+    /// GPIO line number for the radio IRQ, rising edge (default 25).
+    /// Overrides `[gpio].line`.
+    #[arg(long)]
+    gpio_line: Option<u32>,
 
     /// TOML config file to load at startup.
     #[arg(long)]
     config: Option<String>,
 
     /// RF09 carrier frequency in Hz (sub-1 GHz).
-    #[arg(long, default_value_t = 463_500_000)]
+    #[arg(long, default_value_t = 436_500_000)]
     freq: u64,
 
     /// SPI-Poll BBC0_IRQS on the telemetry tick instead of waiting on the GPIO IRQ line. 
@@ -155,6 +209,20 @@ const TX_COMPLETE_TIMEOUT: Duration = Duration::from_millis(250);
 /// reception can raise AGC-hold / RXFS without a matching RXFE/AGC-release, which
 /// would otherwise pin `rx_busy` and block TX. Clear it after this long.
 const RX_CARRIER_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// How often the idle health backstop is allowed to act on a wedged radio.
+const HEALTH_ACTION_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Consecutive bad health checks (each `HEALTH_ACTION_INTERVAL` apart) the radio
+/// must be wedged before escalating from a light re-arm to a full re-init.
+const HEALTH_REINIT_AFTER: u32 = 3;
+
+/// Full re-init backoff: start here, double on each failed re-init up to
+/// [`REINIT_BACKOFF_MAX`], reset on recovery. Stops reset-spamming a chip that
+/// cannot come up (e.g. inadequate supply) while still recovering quickly from a
+/// one-off fault.
+const REINIT_BACKOFF_MIN: Duration = Duration::from_secs(2);
+const REINIT_BACKOFF_MAX: Duration = Duration::from_secs(60);
 
 /// Bound the transmit backlog so a stalled link cannot grow it without limit.
 const TX_QUEUE_MAX: usize = 256;
@@ -280,6 +348,11 @@ fn remove_stale_uds(path: &std::path::Path) -> io::Result<()> {
 fn main() -> io::Result<()> {
     let args = Args::parse();
 
+    // Identify the deployed binary up front: BUILD_ID is git sha (+ "-dirty")
+    // and a build timestamp, stamped by build.rs. On a satellite with no console
+    // this is the only way to confirm which image is actually running.
+    eprintln!("uhf_daemon build {}", env!("BUILD_ID"));
+
     // -- sockets ---------------------------------------------------------
     // TX bind: --tx-bind wins (any address), else 127.0.0.1:--tx-port.
     let tx_addr: SocketAddr = match args.tx_bind.as_ref() {
@@ -332,10 +405,14 @@ fn main() -> io::Result<()> {
         timerfd::SetTimeFlags::Default,
     );
 
-    // -- signal handling (SIGINT for clean shutdown) ---------------------
-    use signal_hook::consts::SIGINT;
+    // -- signal handling (SIGINT/SIGTERM for clean shutdown) -------------
+    // SIGTERM is what a supervisor (OreSat C3/olaf, systemd) sends to stop or
+    // restart the daemon, so it must trigger the same radio-safe shutdown as a
+    // console SIGINT - otherwise a routine restart leaves the PA/front-end keyed.
+    use signal_hook::consts::{SIGINT, SIGTERM};
     let signal_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     signal_hook::flag::register(SIGINT, signal_flag.clone()).map_err(io_err)?;
+    signal_hook::flag::register(SIGTERM, signal_flag.clone()).map_err(io_err)?;
 
     // -- poll registry ---------------------------------------------------
     let mut poll = Poll::new()?;
@@ -352,34 +429,151 @@ fn main() -> io::Result<()> {
 
     // -- radio -----------------------------------------------------------
     let mut radio = Radio::new();
+
+    // -- TOML config (optional) ---------------------------------------
+    // One reader for both registers and beacon/RSSI/SPI/GPIO settings. Read
+    // BEFORE opening SPI so [spi]/[gpio] can choose the device the daemon binds.
+    let mut net = oresat_at86rf215_driver::config::NetConfig::default();
+    if let Some(ref path) = args.config {
+        let contents = std::fs::read_to_string(path)?;
+        // Fail loud on any typos in a table name. RadioConfig has no deny_unknown_fields
+        // (the register and net passes share the file), so a misspelt table like
+        // `[rf09_rxdfee]` would otherwise be silently dropped -> a deaf radio.
+        oresat_at86rf215_driver::config::check_known_tables(&contents)
+            .map_err(|m| io::Error::new(io::ErrorKind::InvalidData, m))?;
+        let config: oresat_at86rf215_driver::config::RadioConfig =
+            toml::from_str(&contents).map_err(io::Error::other)?;
+        // An out-of-range register value panics inside the bitfield builders;
+        // contain it so a bad config is a clean error (and a supervisor restart)
+        // rather than an unwinding abort. Startup-only, so the cost is irrelevant.
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| radio.apply_config(&config)))
+            .map_err(|_| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "config contains an out-of-range register field value \
+                     (a bitfield setter panicked) - check the offending value against the datasheet",
+                )
+            })?;
+        net = toml::from_str(&contents).map_err(io::Error::other)?;
+
+        // Reject a config that would boot a deaf/dead radio (PT/RXDFE.SR hard
+        // errors; AGCC/PADFE warnings). Only enforced when a config is supplied -
+        // bench/dry-run runs with built-in defaults are unaffected.
+        validate_radio_for_flight(&radio);
+        if let Err(m) = flight_blocking_problems(&radio) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, m));
+        }
+        eprintln!("config loaded: {}", path);
+    }
+
+    // -- SPI + GPIO device settings (CLI flag > TOML > default) ----------
+    let spi_dev = args
+        .spi
+        .clone()
+        .or(net.spi.dev.clone())
+        .unwrap_or_else(|| "/dev/spidev0.0".to_string());
+    let spi_hz = args.spi_hz.or(net.spi.hz).unwrap_or(spi::DEFAULT_SPI_HZ);
+    let gpio_chip = args
+        .gpio_chip
+        .clone()
+        .or(net.gpio.chip.clone())
+        .unwrap_or_else(|| "/dev/gpiochip0".to_string());
+    let gpio_line = args.gpio_line.or(net.gpio.line).unwrap_or(25);
+
     let mut spidev: Option<spidev::Spidev> = if !args.dry_run {
-        let dev = spi::open_with_speed(&args.spi, args.spi_hz)?;
-        eprintln!("SPI opened: {} @ {} Hz", args.spi, args.spi_hz);
+        let dev = spi::open_with_speed(&spi_dev, spi_hz)?;
+        eprintln!("SPI opened: {} @ {} Hz", spi_dev, spi_hz);
         Some(dev)
     } else {
         eprintln!("dry-run mode - no hardware");
         None
     };
 
-    // -- TOML config (optional) ---------------------------------------
-    if let Some(ref path) = args.config {
-        let contents = std::fs::read_to_string(path)?;
-        let config: oresat_at86rf215_driver::config::RadioConfig =
-            toml::from_str(&contents).map_err(io::Error::other)?;
-        radio.apply_config(&config);
-        eprintln!("config loaded: {}", path);
+    // -- beacon + RSSI socket settings (CLI flag > TOML > default) -------
+    // Beacon bind: --beacon-bind overides (any address), else 127.0.0.1:<port>,
+    // where the port is --beacon-port, else [beacon].port, else 10015.
+    let beacon_bind = args.beacon_bind.clone().or(net.beacon.bind.clone());
+    let beacon_uds = args.beacon_uds.clone().or(net.beacon.uds.clone());
+    let beacon_port = args.beacon_port.or(net.beacon.port).unwrap_or(10015);
+    // The beacon socket is optional: it binds only when explicitly configured
+    // (a --beacon-* flag or any [beacon] field). 
+    // CLI --no-beacon, or [beacon].enabled forces it off/on regardless.
+    let beacon_configured = args.beacon_port.is_some()
+        || args.beacon_bind.is_some()
+        || args.beacon_uds.is_some()
+        || net.beacon.port.is_some()
+        || net.beacon.bind.is_some()
+        || net.beacon.uds.is_some();
+    let beacon_enabled = !args.no_beacon && net.beacon.enabled.unwrap_or(beacon_configured);
+    let beacon_addr: SocketAddr = match beacon_bind.as_ref() {
+        Some(s) => s.parse().map_err(|e| {
+            io::Error::new(io::ErrorKind::InvalidInput, format!("beacon bind {s}: {e}"))
+        })?,
+        None => SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), beacon_port),
+    };
+
+    let rssi_peer = args.rssi_peer.clone().or(net.rssi.peer.clone());
+    // RSSI push is on when a peer is resolved and not disabled. An explicit
+    // [rssi].enabled=true with no peer can't push - warn rather than silently no-op.
+    if !args.no_rssi && net.rssi.enabled == Some(true) && rssi_peer.is_none() {
+        eprintln!("warning: [rssi].enabled is true but no rssi peer set - RSSI push disabled");
     }
+    let rssi_enabled =
+        !args.no_rssi && net.rssi.enabled.unwrap_or(rssi_peer.is_some()) && rssi_peer.is_some();
+
+    // -- beacon listener socket (optional) ------------------------------
+    let mut beacon_sock: Option<TxListener> = if beacon_enabled {
+        Some(match beacon_uds.as_ref() {
+            Some(path) => {
+                remove_stale_uds(path)?;
+                TxListener::Uds(UnixDatagram::bind(path)?)
+            }
+            None => TxListener::Udp(UdpSocket::bind(beacon_addr)?),
+        })
+    } else {
+        None
+    };
+    if let Some(ref mut b) = beacon_sock {
+        b.register(poll.registry(), BEACON_SOCKET)?;
+    }
+
+    // -- RSSI push socket (optional) ------------------------------------
+    let rssi_sock = rssi_enabled.then(|| {
+        let sock = std::net::UdpSocket::bind("0.0.0.0:0").expect("bind rssi");
+        // connect() on a UDP addr does not need a live peer; a down peer only
+        // shows up as ECONNREFUSED on send (logged, non-fatal - see the
+        // per-frame push after the event dispatch in the main loop).
+        sock.connect(rssi_peer.as_ref().expect("rssi peer set when enabled"))
+            .expect("connect rssi");
+        sock
+    });
 
     // -- radio initialisation (hardware only) ---------------------------
+    // Retry a few times.
     if let Some(ref mut dev) = spidev {
-        init_radio(&mut radio, dev, args.freq, args.fcs_filter, args.verbose)?;
+        let mut attempt = 0u32;
+        loop {
+            match init_radio(&mut radio, dev, args.freq, args.fcs_filter, args.verbose) {
+                Ok(()) => break,
+                Err(e) if attempt < 2 => {
+                    attempt += 1;
+                    eprintln!("radio init failed (attempt {attempt}/3): {e} - retrying in 200 ms");
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                Err(e) => return Err(e),
+            }
+        }
     }
 
+    // RX servicing mode: GPIO edge IRQ, or SPI polling on the timer tick. Starts
+    // from --poll and falls back to polling if the GPIO line cannot be opened.
+    let mut poll_mode = args.poll;
+
     // -- GPIO IRQ (hardware only; skipped in --poll mode) ----------------
-    let irq_req = if spidev.is_some() && !args.poll {
+    let irq_req = if spidev.is_some() && !poll_mode {
         match gpiocdev::Request::builder()
-            .on_chip(&args.gpio_chip)
-            .with_line(args.gpio_line)
+            .on_chip(&gpio_chip)
+            .with_line(gpio_line)
             .with_edge_detection(gpiocdev::line::EdgeDetection::RisingEdge)
             .with_bias(gpiocdev::line::Bias::PullDown)
             .request()
@@ -392,19 +586,25 @@ fn main() -> io::Result<()> {
                     Interest::READABLE,
                 )?;
                 let idle = req
-                    .value(args.gpio_line)
+                    .value(gpio_line)
                     .map(|v| if v == gpiocdev::line::Value::Active { "HIGH" } else { "LOW" })
                     .unwrap_or("?");
-                eprintln!("GPIO IRQ: {}:{} (idle level: {})", args.gpio_chip, args.gpio_line, idle);
+                eprintln!("GPIO IRQ: {}:{} (idle level: {})", gpio_chip, gpio_line, idle);
                 Some(req)
             }
             Err(e) => {
-                eprintln!("warning: failed to open GPIO IRQ ({}), RX disabled", e);
+                // Don't go deaf: fall back to SPI polling on the timer tick so a
+                // wiring/permission fault on the IRQ line still yields a working RX.
+                eprintln!(
+                    "warning: failed to open GPIO IRQ ({}), falling back to --poll (SPI polling)",
+                    e,
+                );
+                poll_mode = true;
                 None
             }
         }
     } else {
-        if args.poll && spidev.is_some() {
+        if poll_mode && spidev.is_some() {
             eprintln!("RX serviced by SPI polling on the timer tick (--poll)");
         }
         None
@@ -422,11 +622,37 @@ fn main() -> io::Result<()> {
     let mut acc_irqs: u8 = 0;
     let mut last_status = std::time::Instant::now();
 
+    // Consecutive health checks (HEALTH_ACTION_INTERVAL apart) the radio has been
+    // found wedged. Drives the backstop (light re-arm -> backed-off full re-init).
+    let mut health_bad: u32 = 0;
+    let mut last_health_action = std::time::Instant::now();
+    let mut last_reinit = std::time::Instant::now();
+    let mut reinit_backoff = REINIT_BACKOFF_MIN;
+
+    // Beacons received here are queued onto the same TX backlog as `tx_sock`.
+    let mut beacon_count: u64 = 0;
+    // RSSI is pushed after every received frame: a push fires whenever
+    // stats.rx_count has advanced past this watermark (see end of event loop).
+    let mut last_rssi_rx_count: u64 = 0;
+    // Tracks whether the RSSI peer is currently unreachable, so a consumer that
+    // is simply not up yet does not flood stderr with one error per push
+    // log only the transitions into and out of the failed state.
+    let mut rssi_peer_down = false;
+
     eprintln!(
         "listening: TX on {}, RX forwarded to {}",
         tx_sock.describe(&tx_addr.to_string(), &args.tx_uds),
         rx_sock.describe(&rx_peer, &args.rx_uds),
     );
+    if let Some(ref b) = beacon_sock {
+        eprintln!("listening: beacon on {}", b.describe(&beacon_addr.to_string(), &beacon_uds));
+    }
+    if rssi_sock.is_some() {
+        eprintln!(
+            "rssi push -> {} after every received frame",
+            rssi_peer.as_deref().unwrap_or("?"),
+        );
+    }
 
     // Clear any IRQ pending from the RX-enable->IRQ-arm window before the loop.
     // The AT86RF215 IRQ pin is level-held: it stays asserted while any enabled
@@ -448,7 +674,7 @@ fn main() -> io::Result<()> {
                     service_radio_irqs(&mut radio, dev, &rx_sock, &telemetry_sock, &mut stats, &mut link);
 
                 let high = req
-                    .value(args.gpio_line)
+                    .value(gpio_line)
                     .map(|v| v == gpiocdev::line::Value::Active)
                     .unwrap_or(false);
                 if pass == 0 {
@@ -475,16 +701,31 @@ fn main() -> io::Result<()> {
     }
 
     loop {
-        // Check for SIGINT before blocking.
+        // Check for SIGINT/SIGTERM before blocking.
         if signal_flag.load(std::sync::atomic::Ordering::Relaxed) {
             eprintln!(
-                "\nSIGINT received - shutting down (tx={}, rx={}, crc_fail={}, ticks={})",
-                stats.tx_count, stats.rx_count, stats.rx_crc_fail, stats.ticks,
+                "\nsignal received - shutting down (tx={}, rx={}, crc_fail={}, trxerr={}, batlow={}, reinits={}, beacons={}, ticks={})",
+                stats.tx_count, stats.rx_count, stats.rx_crc_fail, stats.trxerr_count,
+                stats.batlow_count, stats.radio_reinits, beacon_count, stats.ticks,
             );
+            // Leave the radio safe: drop the external front-end and stop the PA so
+            // a restart/stop never leaves it keyed.
+            if let Some(ref mut dev) = spidev {
+                radio_safe_shutdown(&mut radio, dev);
+            }
             return Ok(());
         }
 
-        poll.poll(&mut events, Some(Duration::from_millis(250)))?;
+        // A signal interrupting poll() surfaces as ErrorKind::Interrupted; loop so
+        // the shutdown check above runs. Other poll errors are logged, not fatal.
+        match poll.poll(&mut events, Some(Duration::from_millis(250))) {
+            Ok(()) => {}
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                eprintln!("poll error: {e}");
+                continue;
+            }
+        }
 
         for event in events.iter() {
             match event.token() {
@@ -516,7 +757,13 @@ fn main() -> io::Result<()> {
                             }
                             Ok(_) => break,
                             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                            Err(e) => return Err(e),
+                            Err(e) => {
+                                // A transient socket error must not kill the daemon
+                                // (the supervisor would only restart into it). Log
+                                // and stop draining this readiness; retry next wake.
+                                eprintln!("TX socket recv error: {e}");
+                                break;
+                            }
                         }
                     }
                     pump_tx(
@@ -530,6 +777,45 @@ fn main() -> io::Result<()> {
                     )?;
                 }
 
+                BEACON_SOCKET => {
+                    // Beacons are a second TX input: drain them onto the SAME
+                    // transmit backlog as the TX socket.
+                    if let Some(ref beacon_sock) = beacon_sock {
+                        loop {
+                            match beacon_sock.recv(&mut pkt_buf) {
+                                Ok(n) if n > 0 => {
+                                    let frame = &pkt_buf[..n];
+                                    let preview: String = frame
+                                        .iter()
+                                        .take(16)
+                                        .map(|b| format!("{:02X}", b))
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
+                                    let suffix = if frame.len() > 16 { "..." } else { "" };
+                                    eprintln!("BEACON socket: {} B from client [{}{}]", n, preview, suffix);
+                                    beacon_count += 1;
+                                    link.enqueue(frame);
+                                }
+                                Ok(_) => break,
+                                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                                Err(e) => {
+                                    eprintln!("beacon socket recv error: {e}");
+                                    break;
+                                }
+                            }
+                        }
+                        pump_tx(
+                            &mut link,
+                            &mut radio,
+                            &mut spidev,
+                            &rx_sock,
+                            &telemetry_sock,
+                            &mut stats,
+                            !args.no_carrier_sense,
+                        )?;
+                    }
+                }
+
                 TIMER => {
                     // Drain the timerfd so it doesn't fire again immediately.
                     let _ = tfd.read();
@@ -538,7 +824,7 @@ fn main() -> io::Result<()> {
                     // --poll mode: service the radio by reading BBC0_IRQS here
                     // instead of waiting on the GPIO line. The rate is
                     // telemetry interval (--telemetry-ms, default 100 ms).
-                    if args.poll {
+                    if poll_mode {
                         if let Some(ref mut dev) = spidev {
                             match service_radio_irqs(
                                 &mut radio,
@@ -583,6 +869,110 @@ fn main() -> io::Result<()> {
                         let _ = spi::read_register(dev, &mut radio.rf09_edv);
                         let _ = spi::read_register(dev, &mut radio.rf09_agcs);
                         stats.update_rssi(radio.rf09_rssi.value.rssi());
+
+                        // Health backstop. The chip should be receiving when idle.
+                        // If it is parked in an unexpected non-operational state
+                        // (TrxOff/Reset - e.g. a brownout reset or a TRXERR whose
+                        // IRQ was missed) and we are not mid-TX, try a light re-arm;
+                        // only after HEALTH_REINIT_AFTER consecutive failures do a
+                        // full re-init, and back that off (REINIT_BACKOFF_*) so a
+                        // chip held down by power/contention is not reset-spammed.
+                        let state = radio.rf09_state.value.state();
+                        let operational = matches!(
+                            state,
+                            TransceiverState::Rx
+                                | TransceiverState::Tx
+                                | TransceiverState::TxPrep
+                                | TransceiverState::Transition
+                        );
+                        if operational || link.tx_busy {
+                            if health_bad != 0 {
+                                eprintln!("RF09 healthy again (state {state:?})");
+                            }
+                            health_bad = 0;
+                            reinit_backoff = REINIT_BACKOFF_MIN;
+                            // Operational again without a reflash => the BATLOW was
+                            // a transient dip that did not reset the registers, so
+                            // the config is trustworthy: drop the suspect flag.
+                            stats.clear_batlow();
+                        } else if last_health_action.elapsed() >= HEALTH_ACTION_INTERVAL {
+                            last_health_action = std::time::Instant::now();
+                            health_bad += 1;
+                            // Light re-arm first so the receiver comes back fast, then
+                            // verify the chip did not lose its register config to a
+                            // brownout reset. A CMD=Rx restores the state machine but
+                            // NOT the channel/PHY/front-end, so after a reset the chip
+                            // reports "Rx" yet is deaf on the wrong channel. init_radio
+                            // programs RF09_CCF0 to a non-zero channel center; reading
+                            // back 0 means the chip reset to defaults and must be
+                            // reflashed. BATLOW (read-to-clear, easily missed) is only a
+                            // hint - the CCF0 read-back is authoritative and catches
+                            // every reset whether or not its BATLOW edge was captured.
+                            let state_ok = match ensure_receiving(&mut radio, dev) {
+                                Ok(()) => {
+                                    let _ = spi::read_register(dev, &mut radio.rf09_state);
+                                    matches!(
+                                        radio.rf09_state.value.state(),
+                                        TransceiverState::Rx | TransceiverState::TxPrep
+                                    )
+                                }
+                                Err(_) => false,
+                            };
+                            let config_intact = state_ok && {
+                                let _ = spi::read_register(dev, &mut radio.rf09_ccf0);
+                                radio.rf09_ccf0.value.ccf0() != 0
+                            };
+                            // Chip alive but registers wiped, or a BATLOW we did capture:
+                            // either way the config is suspect and needs a reflash. A
+                            // global chip reset clears every register at once, so an
+                            // intact CCF0 proves no reset occurred (any BATLOW was a
+                            // transient dip) - treat that as a clean recovery.
+                            let config_suspect = (state_ok && !config_intact) || stats.batlow_pending;
+                            if state_ok && config_intact {
+                                eprintln!("RF09 re-armed from {state:?} to Rx");
+                                stats.clear_batlow();
+                                health_bad = 0;
+                            } else if (config_suspect || health_bad >= HEALTH_REINIT_AFTER)
+                                && last_reinit.elapsed() >= reinit_backoff
+                            {
+                                last_reinit = std::time::Instant::now();
+                                let reason = if state_ok && !config_intact {
+                                    "config reset to defaults (brownout)"
+                                } else if stats.batlow_pending {
+                                    "BATLOW (brownout) - config may be lost"
+                                } else {
+                                    "stuck"
+                                };
+                                eprintln!(
+                                    "RF09 {reason} in {state:?} for {health_bad}s - full re-init (backoff {:?})",
+                                    reinit_backoff,
+                                );
+                                match init_radio(
+                                    &mut radio,
+                                    dev,
+                                    args.freq,
+                                    args.fcs_filter,
+                                    args.verbose,
+                                ) {
+                                    Ok(()) => {
+                                        stats.record_reinit();
+                                        // Config restored - the radio is trustworthy again.
+                                        stats.clear_batlow();
+                                        link.tx_busy = false;
+                                        link.rx_busy = false;
+                                        health_bad = 0;
+                                        reinit_backoff = REINIT_BACKOFF_MIN;
+                                    }
+                                    Err(e) => {
+                                        eprintln!("RF09 re-init failed: {e}");
+                                        reinit_backoff =
+                                            (reinit_backoff * 2).min(REINIT_BACKOFF_MAX);
+                                    }
+                                }
+                            } else {
+                                eprintln!("warning: RF09 in unexpected state {state:?} (x{health_bad})");
+                            }
+                        }
                     }
 
                     if let Some(ref ts) = telemetry_sock {
@@ -608,11 +998,13 @@ fn main() -> io::Result<()> {
                             TX_COMPLETE_TIMEOUT,
                         );
                         link.tx_busy = false;
-                        // The chip should have auto-dropped to TxPrep; re-arm Rx
-                        // so a wedged transmit cannot leave the receiver off.
-                        if let Some(ref mut dev) = spidev {
-                            radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Rx);
-                            let _ = spi::write_register(dev, &radio.rf09_cmd);
+                        // Re-arm Rx state-aware: a wedged transmit can leave the
+                        // chip in TxPrep OR TrxOff, and CMD=Rx is illegal from
+                        // TrxOff, so route via TxPrep when needed (ensure_receiving).
+                        if let Some(ref mut dev) = spidev
+                            && let Err(e) = ensure_receiving(&mut radio, dev)
+                        {
+                            eprintln!("TX-timeout Rx re-arm failed: {e}");
                         }
                     }
                     if link.rx_busy && link.rx_started.elapsed() > RX_CARRIER_TIMEOUT {
@@ -662,7 +1054,7 @@ fn main() -> io::Result<()> {
 
                             let still_high = irq_req
                                 .as_ref()
-                                .and_then(|req| req.value(args.gpio_line).ok())
+                                .and_then(|req| req.value(gpio_line).ok())
                                 .map(|v| v == gpiocdev::line::Value::Active)
                                 .unwrap_or(false);
                             if !still_high {
@@ -688,6 +1080,38 @@ fn main() -> io::Result<()> {
                 _ => {}
             }
         }
+
+        // RSSI push to the satellite C3: after every received frame.
+        if stats.rx_count != last_rssi_rx_count {
+            last_rssi_rx_count = stats.rx_count;
+            if let Some(ref rs) = rssi_sock {
+                match rs.send(&encode_rssi(&stats)) {
+                    Ok(_) => {
+                        if rssi_peer_down {
+                            // Peer came back (a listener was started).
+                            eprintln!("RSSI: push to rssi peer recovered");
+                            rssi_peer_down = false;
+                        }
+                    }
+                    Err(e) => {
+                        // A down/absent peer returns ECONNREFUSED (ICMP port
+                        // unreachable) on every push. Log only the first
+                        // failure so a consumer that is simply not up yet does
+                        // not flood stderr once per frame; never crash.
+                        if !rssi_peer_down {
+                            eprintln!(
+                                "{}",
+                                color(
+                                    &format!("RSSI: push to rssi peer failed: {e} (suppressing repeats until it recovers)"),
+                                    "31",
+                                ),
+                            );
+                            rssi_peer_down = true;
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -710,9 +1134,21 @@ fn init_radio(
     fcs_filter: bool,
     rxfs_irq: bool,
 ) -> io::Result<()> {
-    // 1-2. Chip reset + identity check.
+    // 1-2. Chip reset + identity check. A garbage/floating part number (0xFF =
+    // MISO floating: chip unpowered, wrong CS, or wiring fault) must fail loud so
+    // the init-retry / supervisor path runs instead of the daemon driving a chip
+    // that is not actually there.
     let (pn, vn) = spi::reset_and_identify(dev, radio)?;
     eprintln!("chip: {:?} v{}", pn, vn);
+    if let DevicePartNumber::Unknown(b) = pn {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "unrecognised AT86RF215 part number {b:#04x} (0xFF = MISO floating: \
+                 chip unpowered / wrong CS / SPI wiring) - refusing to run blind"
+            ),
+        ));
+    }
 
     // 3. Write configurable registers to SPI (values set by --config or defaults).
     //    Uses BulkWrites to combine contiguous registers into fewer SPI transactions.
@@ -729,6 +1165,21 @@ fn init_radio(
         freq_hz, pll.ccf0, pll.cn, pll.cs,
     );
     spi::apply_channel_rf09(dev, radio, pll)?;
+
+    // Report the external front-end mode just flushed (RF09_PADFE) so a config
+    // that forgot to enable it (0 = FE disabled -> external PA/LNA never keyed)
+    // is obvious at startup rather than looking like a weak link.
+    let fe = radio.rf09_padfe.value.padfe();
+    eprintln!(
+        "front-end: RF09_PADFE={} ({})",
+        fe,
+        match fe {
+            0 => "disabled - external PA/LNA NOT keyed",
+            1 => "FE_MODE_4",
+            2 => "FE_MODE_5",
+            _ => "FE_MODE_6",
+        },
+    );
 
     // 4. Enable BBC0 baseband + auto-FCS + FCS filter.
     //    These are layered on top of whatever the TOML config set.
@@ -767,6 +1218,14 @@ fn init_radio(
     radio.rf09_edc.value = radio.rf09_edc.value.with_edm(EnergyDetectionMode::Auto);
     spi::write_register(dev, &radio.rf09_edc)?;
 
+    // 5c. Enable RF09-level fault interrupts (TRXERR = PLL lock fault, BATLOW =
+    //     supply brownout). Without this they are masked off and a radiation/
+    //     thermal PLL fault that drops the chip to TrxOff never reaches the IRQ
+    //     line, so the daemon goes deaf with no signal. service_radio_irqs reads
+    //     RF09_IRQS each pass and recovers on TRXERR.
+    radio.rf09_irqm.value = RfnIrqm::new().with_trxerr(true).with_batlow(true);
+    spi::write_register(dev, &radio.rf09_irqm)?;
+
     // 6. Transition to Rx: TrxOff -> TxPrep, then TxPrep -> Rx.
     radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::TxPrep);
     spi::write_register(dev, &radio.rf09_cmd)?;
@@ -795,6 +1254,7 @@ fn write_rf09_config(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<
     bw.add(&mut radio.rf09_txcutc);
     bw.add(&mut radio.rf09_txdfe);
     bw.add(&mut radio.rf09_pac);
+    bw.add(&mut radio.rf09_padfe);
     for cmd in bw.generate_commands() {
         dev.write_all(&cmd)?;
     }
@@ -838,6 +1298,23 @@ fn write_bbc0_config(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<
 /// a TXFE interrupt.  The GPIO_IRQ handler re-enters Rx on TXFE,
 /// so this function does **not** issue CMD=Rx itself.
 fn transmit_frame(radio: &mut Radio, dev: &mut spidev::Spidev, frame: &[u8]) -> io::Result<()> {
+    // 0. Bound the frame to the chip's 2047-octet TX buffer (payload + FCS).
+    //    BBCn_TXFL/FBL are 11-bit, so an oversize frame would overrun the FIFO
+    //    and TXFL would silently wrap - reject it loudly before touching the chip.
+    //    FCST=0 => 32-bit FCS (4 octets); =1 => 16-bit (2).
+    let fcs_len = if radio.bbc0_pc.value.fcst() { 2 } else { 4 };
+    if frame.len() + fcs_len > MAX_RF_FRAME {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "frame {} B + {} B FCS exceeds the {} B RF frame buffer - dropping",
+                frame.len(),
+                fcs_len,
+                MAX_RF_FRAME,
+            ),
+        ));
+    }
+
     // 1. Transition to TxPrep and wait for the PLL to relock. Issuing CMD=TX
     //    before TxPrep+PLL-lock risks transmitting before the
     //    synthesizer is settled - TXFE may never fire.
@@ -848,9 +1325,7 @@ fn transmit_frame(radio: &mut Radio, dev: &mut spidev::Spidev, frame: &[u8]) -> 
     // 2. Reserve room for the FCS. With BBC0_PC.TXAFCS=1 the chip overwrites
     //    the last fcs_len octets of the frame buffer with the computed FCS, and
     //    TXFL counts those octets (datasheet 6.13.3). Without the reservation
-    //    the chip clobbers the last fcs_len bytes of real payload. 
-    //    FCST=0 => 32-bit FCS (4 octets); =1 => 16-bit (2).
-    let fcs_len = if radio.bbc0_pc.value.fcst() { 2 } else { 4 };
+    //    the chip clobbers the last fcs_len bytes of real payload.
     let mut buf = frame.to_vec();
     buf.resize(frame.len() + fcs_len, 0x00); // FCS placeholder
 
@@ -917,6 +1392,12 @@ fn pump_tx(
                     // dropped frame is not requeued (CFDP will retransmit).
                     stats.record_tx_error();
                     eprintln!("TX error: {}", e);
+                    // transmit_frame may have left the chip in TxPrep (a PLL-lock
+                    // timeout returns before CMD=Rx), which is deaf. Force it back
+                    // to Rx so a failed transmit never silently kills reception.
+                    if let Err(re) = ensure_receiving(radio, dev) {
+                        eprintln!("post-TX-error Rx re-arm failed: {re}");
+                    }
                 }
             }
             Ok(())
@@ -1036,7 +1517,106 @@ fn service_radio_irqs(
         link.rx_busy = false;
     }
 
+    // Sample the RF09-level IRQs too. The IRQ pin is the OR of all blocks and is
+    // read-to-clear, so a pending RF09 source (TRXERR/BATLOW) left unread would
+    // hold the shared line high and stall every later edge. On TRXERR (PLL lock
+    // fault - radiation/thermal/brownout) the chip drops to TrxOff and goes deaf;
+    // drive it back to Rx here. A full re-init, if needed, is the timer health
+    // backstop's job.
+    spi::read_register(dev, &mut radio.rf09_irqs)?;
+    let rf_irqs = radio.rf09_irqs.value;
+    if rf_irqs.trxerr() {
+        stats.record_trxerr();
+        eprintln!("{}", color("RF09 TRXERR (PLL lock fault) - recovering to Rx", "31"));
+        link.tx_busy = false;
+        link.rx_busy = false;
+        if let Err(e) = ensure_receiving(radio, dev) {
+            eprintln!("TRXERR recovery (ensure_receiving) failed: {e}");
+        }
+    }
+    if rf_irqs.batlow() {
+        // A brownout can reset the chip's registers to defaults. Flag the config
+        // as suspect so the health backstop reflashes (restoring channel/PHY/
+        // front-end) instead of a cosmetic CMD=Rx re-arm that would leave the
+        // receiver deaf on the wrong channel. Cleared on the next good reflash.
+        stats.record_batlow();
+        eprintln!("{}", color("RF09 BATLOW - supply voltage below threshold (brownout warning)", "31"));
+    }
+
     Ok(raw_irqs)
+}
+
+/// Drive RF09 back into the Rx state from wherever it currently is, taking the
+/// legal path: from Rx it is a no-op; from TxPrep a single CMD=Rx; from TrxOff/
+/// Tx/Transition/Reset it goes via TxPrep + PLL-lock first (CMD=Rx is illegal
+/// directly from TrxOff). Used by the TX-error path, the TX-timeout backstop, and
+/// TRXERR recovery so a fault can never silently leave the receiver off.
+fn ensure_receiving(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<()> {
+    spi::read_register(dev, &mut radio.rf09_state)?;
+    match radio.rf09_state.value.state() {
+        TransceiverState::Rx => Ok(()),
+        TransceiverState::TxPrep => {
+            radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Rx);
+            spi::write_register(dev, &radio.rf09_cmd)
+        }
+        _ => {
+            radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::TxPrep);
+            spi::write_register(dev, &radio.rf09_cmd)?;
+            spi::wait_rf09_txprep_locked(dev, radio, Duration::from_millis(5))?;
+            radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Rx);
+            spi::write_register(dev, &radio.rf09_cmd)
+        }
+    }
+}
+
+/// Leave the radio safe on shutdown: drop the external front-end (so the PA is
+/// not left keyed), command RF09 to TrxOff, and put the unused RF24 to sleep.
+/// Best-effort - failures are logged, not propagated (we are exiting anyway).
+fn radio_safe_shutdown(radio: &mut Radio, dev: &mut spidev::Spidev) {
+    radio.rf09_padfe.value = radio.rf09_padfe.value.with_padfe(0);
+    let _ = spi::write_register(dev, &radio.rf09_padfe);
+    radio.rf09_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::TrxOff);
+    let _ = spi::write_register(dev, &radio.rf09_cmd);
+    radio.rf24_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Sleep);
+    let _ = spi::write_register(dev, &radio.rf24_cmd);
+    eprintln!("radio safed: front-end off (PADFE=0), RF09 TrxOff, RF24 Sleep");
+}
+
+/// Warn (non-fatal) about resolved register values that weaken the link but do
+/// not kill it: AGC off, external front-end disabled.
+fn validate_radio_for_flight(radio: &Radio) {
+    if !radio.rf09_agcc.value.en() {
+        eprintln!("warning: RF09_AGCC.EN=0 - automatic gain control disabled (RX gain not tracked)");
+    }
+    if radio.rf09_padfe.value.padfe() == 0 {
+        eprintln!("warning: RF09_PADFE=0 - external PA/LNA front-end will never be keyed");
+    }
+}
+
+/// Hard flight invariants: a config that violates these would boot a deaf radio,
+/// so refuse to start. Returns a combined message listing every violation.
+fn flight_blocking_problems(radio: &Radio) -> Result<(), String> {
+    let mut problems = Vec::new();
+    let pt = radio.bbc0_pc.value.pt();
+    if pt != 1 {
+        problems.push(format!(
+            "BBC0_PC.PT={pt} (expected 1 = MR-FSK; 0 = PHY OFF = the modulator never runs)"
+        ));
+    }
+    if radio.rf09_rxdfe.value.sr() == 0 {
+        problems.push(
+            "RF09_RXDFE.SR=0 (reset default maps to a 4 MHz sample rate - the receiver is deaf)"
+                .to_string(),
+        );
+    }
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "config fails flight sanity checks (would boot a deaf radio):\n  - {}",
+            problems.join("\n  - "),
+        ))
+    }
 }
 
 // -- RX path ----------------------------------------------------------------
@@ -1157,6 +1737,22 @@ fn synthetic_bbc(tick: u64, tx_count: u64) -> BbcStatus {
         txfl: if tx_count > 0 { 64 } else { 0 },
         cnt: tick as u32,
     }
+}
+
+/// Encode the current RSSI for the `--rssi-peer`.
+///
+/// The format is a single raw int8 dBm byte (127 = invalid).
+///
+/// In dry-run there is no SPI read, so `stats.rssi_last` stays 127 until the
+/// first loopback RX; substitute a synthetic wandering value so the feed is
+/// non-empty.
+fn encode_rssi(stats: &RadioStats) -> [u8; 1] {
+    let rssi = if stats.rssi_last == 127 {
+        synthetic_rf(stats.ticks).rssi
+    } else {
+        stats.rssi_last
+    };
+    [rssi as u8]
 }
 
 fn io_err<E: std::error::Error + Send + Sync + 'static>(e: E) -> io::Error {

@@ -17,8 +17,8 @@ use crate::registers::{
     generate_read_header, generate_write_header,
 };
 
-/// Default SPI clock for the AT86RF215. The chip itself accepts up to 25 MHz.
-pub const DEFAULT_SPI_HZ: u32 = 10_000_000;
+/// Default SPI clock for the AT86RF215.
+pub const DEFAULT_SPI_HZ: u32 = 1_000_000;
 
 /// Open a spidev device at [`DEFAULT_SPI_HZ`].
 pub fn open(path: &str) -> io::Result<spidev::Spidev> {

@@ -1,6 +1,6 @@
 # AT86RF215 daemon config - satellite side (oresat-c3).
 #
-# Applied via `at86rf215-daemon --config configs/sat.toml`.
+# Applied via `uhf_daemon --config configs/sat.toml`.
 # Only fields that differ from the register default need to appear here; the
 # RadioConfig deserializer fills in Default::default() for everything else
 # (see src/config.rs).
@@ -45,5 +45,38 @@ paramp = 3     # 32 us PA ramp (reset 0 = 4 us)
 
 # -- Sub-1 GHz PA ----------------------------------------------------------
 [rf09_pac]
-txpwr = 0
+txpwr = 25
 pacur = 3
+
+# -- External front-end (PA/LNA/switch) ------------------------------------
+# padfe drives the FE control pins: 0 = disabled (external PA/LNA never keyed),
+# 1 = FE_MODE_4, 2 = FE_MODE_5, 3 = FE_MODE_6. 
+# The chip resets PADFE to 0, so an unset config leaves the FE off.
+[rf09_padfe]
+padfe = 2
+
+# -- Daemon sockets (satellite side) ---------------------------------------
+# These are NOT radio registers; they configure the daemon's I/O sockets and
+# are read by a second pass over this same file. A matching CLI flag overrides
+# any value here.
+
+# Beacon input
+# 10015 is the C3 beacon-downlink convention. Set enabled=false to skip binding.
+[beacon]
+port = 10015
+# enabled = false
+
+# RSSI push: the daemon sends the latest RSSI (one raw int8 dBm byte, 127 =
+# invalid) to this UDP peer after every received frame so the C3 can read it.
+# No pushes happen while nothing is being received.
+[rssi]
+peer = "127.0.0.1:10030"
+# enabled = false
+
+[spi]
+dev = "/dev/spidev0.0"
+hz  = 1000000
+
+[gpio]
+chip = "/dev/gpiochip3"
+line = 30

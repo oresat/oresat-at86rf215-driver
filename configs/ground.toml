@@ -1,6 +1,6 @@
 # AT86RF215 daemon config - ground station side (alongside yamcs).
 #
-# Applied via `at86rf215-daemon --config configs/ground.toml`.
+# Applied via `uhf_daemon --config configs/ground.toml`.
 # Only fields that differ from the register default need to appear here
 # (see src/config.rs)
 # 
@@ -41,5 +41,25 @@ paramp = 3     # 32 us PA ramp
 
 # -- Sub-1 GHz PA -------------------------------------
 [rf09_pac]
-txpwr = 0
+txpwr = 25
 pacur = 3
+
+# -- External front-end (PA/LNA/switch) ------------------------------------
+# padfe drives the FE control pins: 0 = disabled (external PA/LNA never keyed),
+# 1 = FE_MODE_4, 2 = FE_MODE_5, 3 = FE_MODE_6. 
+# The chip resets PADFE to 0, so an unset config leaves the FE off.
+[rf09_padfe]
+padfe = 2
+
+# -- Daemon sockets (ground side) ------------------------------------------
+# Not radio registers - daemon socket config, read by a second pass over this
+# file. A matching CLI flag overrides any value here. 
+# Defaults: 
+# The beacon TX input binds 10015 (set enabled=false below to skip it),
+# The RSSI push is off until a peer is set.
+#
+# [beacon]
+# enabled = false
+#
+# [rssi]
+# peer = "127.0.0.1:10030"

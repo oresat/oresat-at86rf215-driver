@@ -1,0 +1,11 @@
+[Unit]
+Description=AT86RF215 UHF radio daemon
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/uhf_daemon --config /etc/oresat/sat.toml --rx-port 10025 --tx-port 10016
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

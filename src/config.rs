@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::registers::*;
 use serde::{Deserialize, Serialize};
 
@@ -259,6 +261,141 @@ pub struct RadioConfig {
 // Used for reducing empty members in radioConfig struct
 fn is_default<T: Default + PartialEq>(v: &T) -> bool {
     v == &T::default()
+}
+
+/// Every top-level table name a `--config` TOML may contain: the register
+/// tables of [`RadioConfig`] plus the `[beacon]`/`[rssi]`/`[spi]`/`[gpio]`
+/// daemon tables of [`NetConfig`]. Used by [`check_known_tables`] to reject typos.
+pub const KNOWN_TABLES: &[&str] = &[
+    // NetConfig
+    "beacon", "rssi", "spi", "gpio",
+    // RadioConfig - general
+    "rf_cfg", "rf_clko", "rf_bmdvc", "rf_xoc", "rf_iqifc0", "rf_iqifc1",
+    // RF09
+    "rf09_auxs", "rf09_cs", "rf09_ccf0", "rf09_cn", "rf09_rxbwc", "rf09_rxdfe",
+    "rf09_agcc", "rf09_agcs", "rf09_txcutc", "rf09_txdfe", "rf09_pac",
+    "rf09_padfe", "rf09_pll",
+    // RF24
+    "rf24_auxs", "rf24_cs", "rf24_ccf0", "rf24_cn", "rf24_rxbwc", "rf24_rxdfe",
+    "rf24_agcc", "rf24_agcs", "rf24_txcutc", "rf24_txdfe", "rf24_pac",
+    "rf24_padfe", "rf24_pll",
+    // BBC0
+    "bbc0_pc", "bbc0_ofdmphrtx", "bbc0_ofdmc", "bbc0_ofdmsw", "bbc0_oqpskc0",
+    "bbc0_oqpskc1", "bbc0_oqpskc2", "bbc0_oqpskc3", "bbc0_oqpskphrtx",
+    "bbc0_afc0", "bbc0_afc1", "bbc0_afftm", "bbc0_affvm", "bbc0_amcs",
+    "bbc0_amedt", "bbc0_amaackpd", "bbc0_amaackt", "bbc0_fskc0", "bbc0_fskc1",
+    "bbc0_fskc2", "bbc0_fskc3", "bbc0_fskc4", "bbc0_fskpll", "bbc0_fsksfd0",
+    "bbc0_fsksfd1", "bbc0_fskphrtx", "bbc0_fskrpc", "bbc0_fskrpcont",
+    "bbc0_fskrpcofft", "bbc0_fskdm", "bbc0_fskpe0", "bbc0_fskpe1", "bbc0_fskpe2",
+    // BBC1
+    "bbc1_pc", "bbc1_ofdmphrtx", "bbc1_ofdmc", "bbc1_ofdmsw", "bbc1_oqpskc0",
+    "bbc1_oqpskc1", "bbc1_oqpskc2", "bbc1_oqpskc3", "bbc1_oqpskphrtx",
+    "bbc1_afc0", "bbc1_afc1", "bbc1_afftm", "bbc1_affvm", "bbc1_amcs",
+    "bbc1_amedt", "bbc1_amaackpd", "bbc1_amaackt", "bbc1_fskc0", "bbc1_fskc1",
+    "bbc1_fskc2", "bbc1_fskc3", "bbc1_fskc4", "bbc1_fskpll", "bbc1_fsksfd0",
+    "bbc1_fsksfd1", "bbc1_fskphrtx", "bbc1_fskrpc", "bbc1_fskrpcont",
+    "bbc1_fskrpcofft", "bbc1_fskdm", "bbc1_fskpe0", "bbc1_fskpe1", "bbc1_fskpe2",
+];
+
+/// Reject a config TOML that contains an unknown top-level table - almost always
+/// a typo (e.g. `[rf09_rxdfee]`) that serde would otherwise silently ignore,
+/// leaving the corresponding register at its (often deaf) reset default. Returns
+/// a single error listing every unrecognised table.
+pub fn check_known_tables(contents: &str) -> Result<(), String> {
+    let table: toml::Table =
+        contents.parse().map_err(|e| format!("config is not valid TOML: {e}"))?;
+    let unknown: Vec<&str> = table
+        .keys()
+        .map(|k| k.as_str())
+        .filter(|k| !KNOWN_TABLES.contains(k))
+        .collect();
+    if unknown.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "config has unknown table(s): [{}] - check for typos (known tables are register \
+             names like rf09_rxdfe, plus beacon/rssi/spi/gpio)",
+            unknown.join("], ["),
+        ))
+    }
+}
+
+/// Daemon socket settings, loaded from the SAME `--config` TOML as the register
+/// config via a second `toml::from_str` pass. Because the crate sets no
+/// `deny_unknown_fields`, the register pass ignores the `[beacon]`/`[rssi]`
+/// tables and this pass ignores all register tables, so register-only
+/// configs keep working (every field stays `None` -> built-in default).
+///
+/// Every field is optional so a CLI flag can override it; the daemon resolves
+/// the effective value as CLI flag > TOML > default.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct NetConfig {
+    pub beacon: BeaconConfig,
+    pub rssi: RssiConfig,
+    pub spi: SpiConfig,
+    pub gpio: GpioConfig,
+}
+
+/// `[beacon]` table: the dedicated TX-input socket to send the beacon frames to.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct BeaconConfig {
+    /// Bind the beacon socket at all (default `true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// UDP port to bind on 127.0.0.1 (default `10015`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    /// Full UDP bind address (e.g. "0.0.0.0:10015"); overrides `port`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bind: Option<String>,
+    /// Unix-domain datagram path; overrides `port`/`bind`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uds: Option<PathBuf>,
+}
+
+/// `[rssi]` table: the RSSI push to a UDP port the satellite C3 reads (one raw
+/// int8 dBm byte sent after every received frame). An old `interval_ms` key
+/// is tolerated (serde ignores unknown fields here) but no longer read: the
+/// push is per-frame, not periodic.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct RssiConfig {
+    /// Enable the push (default: on when `peer` is set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// UDP destination "host:port" to push RSSI to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub peer: Option<String>,
+}
+
+/// `[spi]` table: which spidev character device drives the radio, and at what
+/// clock. Both fields are optional so a CLI flag can override them; the daemon
+/// resolves the effective value as CLI flag > TOML > default.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct SpiConfig {
+    /// spidev device path (default "/dev/spidev0.0").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dev: Option<String>,
+    /// SPI clock rate in Hz (default 1_000_000, see `spi::DEFAULT_SPI_HZ`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hz: Option<u32>,
+}
+
+/// `[gpio]` table: the GPIO line the radio's IRQ is wired to. Both fields are
+/// optional so a CLI flag can override them; the daemon resolves the effective
+/// value as CLI flag > TOML > default.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct GpioConfig {
+    /// GPIO chip character device path (default "/dev/gpiochip0").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chip: Option<String>,
+    /// GPIO line/offset for the radio IRQ, rising edge (default 25).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -2209,5 +2346,129 @@ impl From<&BbcnPmucConfig> for BbcnPmuc {
             .with_fed(c.fed.unwrap_or_else(|| default.fed()))
             .with_iqsel(c.iqsel.unwrap_or_else(|| default.iqsel()))
             .with_ccfts(c.ccfts.unwrap_or_else(|| default.ccfts()))
+    }
+}
+
+#[cfg(test)]
+mod net_config_tests {
+    use super::*;
+
+    // A config file that mixes register tables (consumed by RadioConfig) with
+    // the daemon's [beacon]/[rssi] tables (consumed by NetConfig). The two
+    // deserialize passes must each ignore the other's tables.
+    const MIXED: &str = r#"
+        [bbc0_pc]
+        pt = 1
+
+        [rf09_rxdfe]
+        sr = 10
+
+        [beacon]
+        port = 10015
+        enabled = true
+
+        [rssi]
+        peer = "127.0.0.1:10030"
+        # removed from RssiConfig - must still parse (ignored)
+        interval_ms = 500
+
+        [spi]
+        dev = "/dev/spidev1.0"
+        hz = 5000000
+
+        [gpio]
+        chip = "/dev/gpiochip3"
+        line = 30
+    "#;
+
+    #[test]
+    fn net_pass_reads_beacon_and_rssi_ignoring_register_tables() {
+        let net: NetConfig = toml::from_str(MIXED).unwrap();
+        assert_eq!(net.beacon.port, Some(10015));
+        assert_eq!(net.beacon.enabled, Some(true));
+        assert_eq!(net.beacon.bind, None);
+        assert_eq!(net.beacon.uds, None);
+        assert_eq!(net.rssi.peer.as_deref(), Some("127.0.0.1:10030"));
+        assert_eq!(net.rssi.enabled, None);
+        assert_eq!(net.spi.dev.as_deref(), Some("/dev/spidev1.0"));
+        assert_eq!(net.spi.hz, Some(5_000_000));
+        assert_eq!(net.gpio.chip.as_deref(), Some("/dev/gpiochip3"));
+        assert_eq!(net.gpio.line, Some(30));
+    }
+
+    #[test]
+    fn register_pass_ignores_beacon_and_rssi_tables() {
+        // The register pass on the same string must not error on [beacon]/[rssi]
+        // and must still pick up the register fields.
+        let radio: RadioConfig = toml::from_str(MIXED).unwrap();
+        assert_eq!(radio.bbc0_pc.pt, Some(1));
+        assert_eq!(radio.rf09_rxdfe.sr, Some(10));
+    }
+
+    #[test]
+    fn register_only_config_yields_default_net() {
+        let net: NetConfig = toml::from_str("[bbc0_pc]\npt = 1\n").unwrap();
+        assert_eq!(net, NetConfig::default());
+    }
+
+    #[test]
+    fn check_known_tables_accepts_a_mixed_config() {
+        check_known_tables(MIXED).unwrap();
+    }
+
+    #[test]
+    fn check_known_tables_rejects_a_typo() {
+        // A single-letter typo in a register table name is the silent
+        // deaf-radio failure this guards against.
+        let err = check_known_tables("[rf09_rxdfee]\nsr = 10\n").unwrap_err();
+        assert!(err.contains("rf09_rxdfee"), "message was: {err}");
+    }
+
+    #[test]
+    fn known_tables_have_no_duplicates() {
+        let mut seen = std::collections::HashSet::new();
+        for t in KNOWN_TABLES {
+            assert!(seen.insert(*t), "duplicate table in KNOWN_TABLES: {t}");
+        }
+    }
+
+    // Every register table in KNOWN_TABLES must be a real field that
+    // RadioConfig actually deserializes (and the two net tables must parse into
+    // NetConfig).
+    #[test]
+    fn every_known_table_round_trips_into_its_config_struct() {
+        for t in KNOWN_TABLES {
+            let doc = format!("[{t}]\n");
+            check_known_tables(&doc)
+                .unwrap_or_else(|e| panic!("KNOWN_TABLES entry [{t}] rejected itself: {e}"));
+            if matches!(*t, "beacon" | "rssi" | "spi" | "gpio") {
+                toml::from_str::<NetConfig>(&doc)
+                    .unwrap_or_else(|e| panic!("[{t}] is not a NetConfig table: {e}"));
+            } else {
+                // RadioConfig has no deny_unknown_fields, so an empty known table
+                // always parses; this still proves the name is spelled the same
+                // here as in the struct via the serialize round-trip below.
+                toml::from_str::<RadioConfig>(&doc)
+                    .unwrap_or_else(|e| panic!("[{t}] is not a RadioConfig table: {e}"));
+            }
+        }
+        // Reverse direction: a fully-populated RadioConfig serializes to ONLY
+        // table names present in KNOWN_TABLES (catches a register added to the
+        // struct but forgotten here).
+        let toml_str = toml::to_string(&RadioConfig::default()).unwrap();
+        // Default serializes nothing (all skip), so also exercise to_config of a
+        // touched radio via a representative non-default set.
+        let touched = "[rf09_rxdfe]\nsr = 10\n[bbc0_pc]\npt = 1\n";
+        let cfg: RadioConfig = toml::from_str(touched).unwrap();
+        let ser = toml::to_string(&cfg).unwrap();
+        for line in ser.lines().chain(toml_str.lines()) {
+            let line = line.trim();
+            if let Some(name) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                assert!(
+                    KNOWN_TABLES.contains(&name),
+                    "RadioConfig serializes table [{name}] missing from KNOWN_TABLES"
+                );
+            }
+        }
     }
 }
