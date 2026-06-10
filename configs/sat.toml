@@ -45,7 +45,7 @@ paramp = 3     # 32 us PA ramp (reset 0 = 4 us)
 
 # -- Sub-1 GHz PA ----------------------------------------------------------
 [rf09_pac]
-txpwr = 5
+txpwr = 25
 pacur = 3
 
 # -- External front-end (PA/LNA/switch) ------------------------------------
