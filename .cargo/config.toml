@@ -1,6 +1,6 @@
 [target.arm-unknown-linux-musleabihf]
 # Static musl build for Pi B+ / Zero (ARMv6 + VFPv2).
-linker = "/home/tmpk/toolchains/armv6-linux-musleabihf-cross/bin/armv6-linux-musleabihf-gcc"
+linker = "/armv6-linux-musleabihf-cross/bin/armv6-linux-musleabihf-gcc"
 rustflags = [
     "-C", "target-cpu=arm1176jzf-s",
     "-C", "target-feature=+crt-static",
