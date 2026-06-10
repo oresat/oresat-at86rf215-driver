@@ -16,9 +16,9 @@
 //!   for the TUI viewer. UDP only.
 //! - **RSSI reporting** (optional, `--rssi-peer <addr>`): the daemon pushes the latest
 //!   RSSI as a single raw int8 dBm byte (127 = invalid) to that UDP destination
-//!   every `--rssi-ms` (default 1000).
+//!   after every received frame.
 //!
-//! The beacon port, RSSI peer/interval, and their enable flags can also be set
+//! The beacon port, RSSI peer, and their enable flags can also be set
 //! from the `--config` TOML (`[beacon]` / `[rssi]` tables) a CLI flag overrides
 //! the TOML value.
 //!
@@ -131,16 +131,11 @@ struct Args {
     #[arg(long)]
     telemetry: Option<String>,
 
-    /// UDP destination for the periodic RSSI push, example: "127.0.0.1:10030".
-    /// The satellite C3 reads this single int8 dBm byte (127 = invalid).
-    /// Overrides `[rssi].peer` in `--config`.
+    /// UDP destination for the per-frame RSSI push, example: "127.0.0.1:10030".
+    /// The satellite C3 reads this single int8 dBm byte (127 = invalid), sent
+    /// after every received frame. Overrides `[rssi].peer` in `--config`.
     #[arg(long)]
     rssi_peer: Option<String>,
-
-    /// Interval in milliseconds between RSSI pushes to `--rssi-peer` (default
-    /// 1000). Decoupled from `--telemetry-ms`. Overrides `[rssi].interval_ms`.
-    #[arg(long)]
-    rssi_ms: Option<u64>,
 
     /// Disable the RSSI push (overrides `[rssi].enabled` in `--config`).
     #[arg(long)]
@@ -518,7 +513,6 @@ fn main() -> io::Result<()> {
     };
 
     let rssi_peer = args.rssi_peer.clone().or(net.rssi.peer.clone());
-    let rssi_ms = args.rssi_ms.or(net.rssi.interval_ms).unwrap_or(1000);
     // RSSI push is on when a peer is resolved and not disabled. An explicit
     // [rssi].enabled=true with no peer can't push - warn rather than silently no-op.
     if !args.no_rssi && net.rssi.enabled == Some(true) && rssi_peer.is_none() {
@@ -547,7 +541,8 @@ fn main() -> io::Result<()> {
     let rssi_sock = rssi_enabled.then(|| {
         let sock = std::net::UdpSocket::bind("0.0.0.0:0").expect("bind rssi");
         // connect() on a UDP addr does not need a live peer; a down peer only
-        // shows up as ECONNREFUSED on send (logged, non-fatal - see TIMER arm).
+        // shows up as ECONNREFUSED on send (logged, non-fatal - see the
+        // per-frame push after the event dispatch in the main loop).
         sock.connect(rssi_peer.as_ref().expect("rssi peer set when enabled"))
             .expect("connect rssi");
         sock
@@ -636,8 +631,9 @@ fn main() -> io::Result<()> {
 
     // Beacons received here are queued onto the same TX backlog as `tx_sock`.
     let mut beacon_count: u64 = 0;
-    // RSSI push rate is independent of the telemetry tick (see TIMER arm).
-    let mut last_rssi_push = std::time::Instant::now();
+    // RSSI is pushed after every received frame: a push fires whenever
+    // stats.rx_count has advanced past this watermark (see end of event loop).
+    let mut last_rssi_rx_count: u64 = 0;
     // Tracks whether the RSSI peer is currently unreachable, so a consumer that
     // is simply not up yet does not flood stderr with one error per push
     // log only the transitions into and out of the failed state.
@@ -653,9 +649,8 @@ fn main() -> io::Result<()> {
     }
     if rssi_sock.is_some() {
         eprintln!(
-            "rssi push -> {} every {} ms",
+            "rssi push -> {} after every received frame",
             rssi_peer.as_deref().unwrap_or("?"),
-            rssi_ms,
         );
     }
 
@@ -980,42 +975,6 @@ fn main() -> io::Result<()> {
                         }
                     }
 
-                    // RSSI push to the satellite C3: own rate (--rssi-ms). 
-                    // stats.rssi_last was just refreshed above (and
-                    // holds the last valid reading through TX, where rf09_rssi
-                    // reads 127). One raw int8 dBm byte (see encode_rssi).
-                    if let Some(ref rs) = rssi_sock {
-                        if last_rssi_push.elapsed() >= Duration::from_millis(rssi_ms) {
-                            match rs.send(&encode_rssi(&stats)) {
-                                Ok(_) => {
-                                    if rssi_peer_down {
-                                        // Peer came back (a listener was started).
-                                        eprintln!("RSSI: push to rssi peer recovered");
-                                        rssi_peer_down = false;
-                                    }
-                                }
-                                Err(e) => {
-                                    // A down/absent peer returns ECONNREFUSED (ICMP
-                                    // port unreachable) on every push. Log only the
-                                    // first failure so a consumer that is simply not
-                                    // up yet does not flood stderr once per second;
-                                    // never crash.
-                                    if !rssi_peer_down {
-                                        eprintln!(
-                                            "{}",
-                                            color(
-                                                &format!("RSSI: push to rssi peer failed: {e} (suppressing repeats until it recovers)"),
-                                                "31",
-                                            ),
-                                        );
-                                        rssi_peer_down = true;
-                                    }
-                                }
-                            }
-                            last_rssi_push = std::time::Instant::now();
-                        }
-                    }
-
                     if let Some(ref ts) = telemetry_sock {
                         if spidev.is_some() {
                             let _ = CommState::Rf09Status(rf_status(&radio)).send(ts);
@@ -1119,6 +1078,38 @@ fn main() -> io::Result<()> {
                 }
 
                 _ => {}
+            }
+        }
+
+        // RSSI push to the satellite C3: after every received frame.
+        if stats.rx_count != last_rssi_rx_count {
+            last_rssi_rx_count = stats.rx_count;
+            if let Some(ref rs) = rssi_sock {
+                match rs.send(&encode_rssi(&stats)) {
+                    Ok(_) => {
+                        if rssi_peer_down {
+                            // Peer came back (a listener was started).
+                            eprintln!("RSSI: push to rssi peer recovered");
+                            rssi_peer_down = false;
+                        }
+                    }
+                    Err(e) => {
+                        // A down/absent peer returns ECONNREFUSED (ICMP port
+                        // unreachable) on every push. Log only the first
+                        // failure so a consumer that is simply not up yet does
+                        // not flood stderr once per frame; never crash.
+                        if !rssi_peer_down {
+                            eprintln!(
+                                "{}",
+                                color(
+                                    &format!("RSSI: push to rssi peer failed: {e} (suppressing repeats until it recovers)"),
+                                    "31",
+                                ),
+                            );
+                            rssi_peer_down = true;
+                        }
+                    }
+                }
             }
         }
     }

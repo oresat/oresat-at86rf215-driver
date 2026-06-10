@@ -355,8 +355,10 @@ pub struct BeaconConfig {
     pub uds: Option<PathBuf>,
 }
 
-/// `[rssi]` table: the periodic RSSI push to a UDP port the satellite C3 reads
-/// (one raw int8 dBm byte per send).
+/// `[rssi]` table: the RSSI push to a UDP port the satellite C3 reads (one raw
+/// int8 dBm byte sent after every received frame). An old `interval_ms` key
+/// is tolerated (serde ignores unknown fields here) but no longer read: the
+/// push is per-frame, not periodic.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct RssiConfig {
@@ -366,9 +368,6 @@ pub struct RssiConfig {
     /// UDP destination "host:port" to push RSSI to.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub peer: Option<String>,
-    /// Interval between pushes in milliseconds (default `1000`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub interval_ms: Option<u64>,
 }
 
 /// `[spi]` table: which spidev character device drives the radio, and at what
@@ -2370,6 +2369,7 @@ mod net_config_tests {
 
         [rssi]
         peer = "127.0.0.1:10030"
+        # removed from RssiConfig - must still parse (ignored)
         interval_ms = 500
 
         [spi]
@@ -2389,7 +2389,6 @@ mod net_config_tests {
         assert_eq!(net.beacon.bind, None);
         assert_eq!(net.beacon.uds, None);
         assert_eq!(net.rssi.peer.as_deref(), Some("127.0.0.1:10030"));
-        assert_eq!(net.rssi.interval_ms, Some(500));
         assert_eq!(net.rssi.enabled, None);
         assert_eq!(net.spi.dev.as_deref(), Some("/dev/spidev1.0"));
         assert_eq!(net.spi.hz, Some(5_000_000));

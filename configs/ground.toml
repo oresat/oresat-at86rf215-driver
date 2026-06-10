@@ -63,4 +63,3 @@ padfe = 2
 #
 # [rssi]
 # peer = "127.0.0.1:10030"
-# interval_ms = 1000

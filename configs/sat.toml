@@ -67,10 +67,10 @@ port = 10015
 # enabled = false
 
 # RSSI push: the daemon sends the latest RSSI (one raw int8 dBm byte, 127 =
-# invalid) to this UDP peer every interval_ms so the C3 can read it.
+# invalid) to this UDP peer after every received frame so the C3 can read it.
+# No pushes happen while nothing is being received.
 [rssi]
 peer = "127.0.0.1:10030"
-interval_ms = 5000
 # enabled = false
 
 [spi]

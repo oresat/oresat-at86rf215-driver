@@ -15,4 +15,7 @@ sudo uhf_daemon --rx-port 10025 --tx-port 10016 --config sat.toml
 ### Build .deb package
 ```
 cargo deb --target=armv7-unknown-linux-gnueabihf
+
+# On c3
+sudo apt install ./.deb
 ```
