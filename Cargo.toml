@@ -4,6 +4,7 @@ version = "0.4.6"
 edition = "2024"
 description = "Microchip AT86RF215 radio daemon"
 authors = ["Oresat"]
+license = "GPL-3.0-or-later"
 
 [package.metadata.deb]
 depends = "libc6 (>= 2.34), libgcc-s1 (>= 4.3)"
