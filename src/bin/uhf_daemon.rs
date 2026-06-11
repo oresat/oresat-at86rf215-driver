@@ -744,14 +744,14 @@ fn main() -> io::Result<()> {
                                 // Confirm the local client -> daemon UDP/UDS hop:
                                 // log every datagram accepted on the TX socket
                                 // before it is queued for the radio.
-                                let preview: String = frame
-                                    .iter()
-                                    .take(16)
-                                    .map(|b| format!("{:02X}", b))
-                                    .collect::<Vec<_>>()
-                                    .join(" ");
-                                let suffix = if frame.len() > 16 { "..." } else { "" };
-                                eprintln!("TX socket: {} B from client [{}{}]", n, preview, suffix);
+                                // let preview: String = frame
+                                //     .iter()
+                                //     .take(16)
+                                //     .map(|b| format!("{:02X}", b))
+                                //     .collect::<Vec<_>>()
+                                //     .join(" ");
+                                // let suffix = if frame.len() > 16 { "..." } else { "" };
+                                // eprintln!("TX socket: {} B from client [{}{}]", n, preview, suffix);
 
                                 link.enqueue(frame);
                             }
@@ -785,14 +785,14 @@ fn main() -> io::Result<()> {
                             match beacon_sock.recv(&mut pkt_buf) {
                                 Ok(n) if n > 0 => {
                                     let frame = &pkt_buf[..n];
-                                    let preview: String = frame
-                                        .iter()
-                                        .take(16)
-                                        .map(|b| format!("{:02X}", b))
-                                        .collect::<Vec<_>>()
-                                        .join(" ");
-                                    let suffix = if frame.len() > 16 { "..." } else { "" };
-                                    eprintln!("BEACON socket: {} B from client [{}{}]", n, preview, suffix);
+                                    // let preview: String = frame
+                                    //     .iter()
+                                    //     .take(16)
+                                    //     .map(|b| format!("{:02X}", b))
+                                    //     .collect::<Vec<_>>()
+                                    //     .join(" ");
+                                    // let suffix = if frame.len() > 16 { "..." } else { "" };
+                                    // eprintln!("BEACON socket: {} B from client [{}{}]", n, preview, suffix);
                                     beacon_count += 1;
                                     link.enqueue(frame);
                                 }
@@ -1381,11 +1381,11 @@ fn pump_tx(
                     link.tx_busy = true;
                     link.tx_started = Instant::now();
                     stats.record_tx();
-                    eprintln!(
-                        "TX: {} B keyed on RF09 ({} queued)",
-                        frame.len(),
-                        link.tx_queue.len(),
-                    );
+                    // eprintln!(
+                    //     "TX: {} B keyed on RF09 ({} queued)",
+                    //     frame.len(),
+                    //     link.tx_queue.len(),
+                    // );
                 }
                 Err(e) => {
                     // Leave tx_busy false so the next pump retries the queue; the
@@ -1469,27 +1469,27 @@ fn service_radio_irqs(
         match receive_frame(radio, dev, stats) {
             Ok(Some(pkt)) => {
                 stats.record_rx(pkt.rssi);
-                let preview: String = pkt
-                    .data
-                    .iter()
-                    .take(16)
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                let suffix = if pkt.data.len() > 16 { "..." } else { "" };
-                eprintln!(
-                    "{}",
-                    color(
-                        &format!(
-                            "RX: {} B from RF09 (EDV={} dBm) -> rx socket [{}{}]",
-                            pkt.data.len(),
-                            pkt.edv,
-                            preview,
-                            suffix,
-                        ),
-                        "32",
-                    ),
-                );
+                // let preview: String = pkt
+                //     .data
+                //     .iter()
+                //     .take(16)
+                //     .map(|b| format!("{:02X}", b))
+                //     .collect::<Vec<_>>()
+                //     .join(" ");
+                // let suffix = if pkt.data.len() > 16 { "..." } else { "" };
+                // eprintln!(
+                //     "{}",
+                //     color(
+                //         &format!(
+                //             "RX: {} B from RF09 (EDV={} dBm) -> rx socket [{}{}]",
+                //             pkt.data.len(),
+                //             pkt.edv,
+                //             preview,
+                //             suffix,
+                //         ),
+                //         "32",
+                //     ),
+                // );
                 // Log forward failures instead of swallowing them. A connected
                 // UDP socket whose peer (the nc listener) is not up yet returns
                 // ECONNREFUSED here after an ICMP port-unreachable - the giveaway
