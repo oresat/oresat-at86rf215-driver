@@ -672,7 +672,7 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
     if let Some(ref mut dev) = spidev {
         let mut attempt = 0u32;
         loop {
-            match init_radio(&mut radio, dev, freq_hz, args.fcs_filter, args.verbose, profile, args.clko_os) {
+            match init_radio(&mut radio, dev, freq_hz, args.fcs_filter, args.verbose, profile, clko_os) {
                 Ok(()) => break,
                 Err(e) if attempt < 2 => {
                     attempt += 1;
@@ -798,7 +798,7 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
                 let _ = spi::read_register(dev, &mut radio.rf24_irqs);
                 let _ = spi::read_register(dev, &mut radio.bbc1_irqs);
                 let _ =
-                    service_radio_irqs(&mut radio, dev, &rx_sock, &telemetry_sock, &mut stats, &mut link);
+                    service_radio_irqs(&mut radio, dev, &rx_sock, &telemetry_sock, &mut stats, &mut link, profile, rssi_offset_db);
 
                 let high = req
                     .value(gpio_line)
@@ -964,6 +964,8 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
                                 &telemetry_sock,
                                 &mut stats,
                                 &mut link,
+                                profile, 
+                                rssi_offset_db,
                             ) {
                                 Ok(irqs) => acc_irqs |= irqs,
                                 Err(e) => eprintln!("poll service error: {}", e),
@@ -1090,7 +1092,7 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
                                     args.fcs_filter,
                                     args.verbose,
                                     profile,
-                                    args.clko_os,
+                                    clko_os,
                                 ) {
                                     Ok(()) => {
                                         stats.record_reinit();
@@ -1186,6 +1188,8 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
                                 &telemetry_sock,
                                 &mut stats,
                                 &mut link,
+                                profile,
+                                rssi_offset_db,
                             ) {
                                 Ok(irqs) => acc_irqs |= irqs,
                                 Err(e) => eprintln!("IRQ service error: {}", e),
@@ -1335,6 +1339,7 @@ fn init_radio(
         fe,
         match (fe, profile) {
             (0, Profile::Lband) => "disabled (receive only)",
+            (_, Profile::Lband) => "disabled (receive only) - no effect",
             (0, Profile::Uhf) => "disabled - external PA/LNA NOT keyed",
             (1, Profile::Uhf) => "FE_MODE_4",
             (2, Profile::Uhf) => "FE_MODE_5",
@@ -1631,6 +1636,8 @@ fn service_radio_irqs(
     telemetry_sock: &Option<std::net::UdpSocket>,
     stats: &mut RadioStats,
     link: &mut LinkState,
+    profile: Profile,
+    offset_db: i16,
 ) -> io::Result<u8> {
     // A single read captures every event (AGC/RXFS/RXFE/TXFE) before clearing.
     spi::read_register(dev, &mut radio.bbc0_irqs)?;
