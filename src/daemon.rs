@@ -1782,16 +1782,23 @@ fn radio_safe_shutdown(radio: &mut Radio, dev: &mut spidev::Spidev) {
     radio.rf24_cmd.value = RfnCmd::new().with_cmd(TransceiverCmd::Sleep);
     let _ = spi::write_register(dev, &radio.rf24_cmd);
     eprintln!("radio safed: front-end off (PADFE=0), RF09 TrxOff, RF24 Sleep");
+    // RF_CLKO left alone.
 }
 
 /// Warn (non-fatal) about resolved register values that weaken the link but do
 /// not kill it: AGC off, external front-end disabled.
-fn validate_radio_for_flight(radio: &Radio) {
+fn validate_radio_for_flight(radio: &Radio, profile: Profile) {
     if !radio.rf09_agcc.value.en() {
         eprintln!("warning: RF09_AGCC.EN=0 - automatic gain control disabled (RX gain not tracked)");
     }
-    if radio.rf09_padfe.value.padfe() == 0 {
+    if profile.can_transmit() && radio.rf09_padfe.value.padfe() == 0 {
         eprintln!("warning: RF09_PADFE=0 - external PA/LNA front-end will never be keyed");
+    }
+    if !profile.can_transmit() && radio.rf09_padfe.value.padfe() != 0 {
+        eprintln!(
+            "warning: RF09_PADFE={} on receive only card - the setting does nothing",
+            radio.rf09_padfe.value.padfe(),
+        );
     }
 }
 
@@ -1800,6 +1807,11 @@ fn validate_radio_for_flight(radio: &Radio) {
 fn flight_blocking_problems(radio: &Radio) -> Result<(), String> {
     let mut problems = Vec::new();
     let pt = radio.bbc0_pc.value.pt();
+    if !profile.can_transmit() && clko_os != 3 {
+        problems.push(format!(
+            "RF_CLKO.OS={clko_os} on --profile lband (expected 3 = 16 MHz)"
+        ));
+    }
     if pt != 1 {
         problems.push(format!(
             "BBC0_PC.PT={pt} (expected 1 = MR-FSK; 0 = PHY OFF = the modulator never runs)"
