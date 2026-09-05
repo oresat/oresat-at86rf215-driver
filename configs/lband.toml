@@ -41,9 +41,6 @@ clko_os = 3
 # Gain from antenna to RF port.
 rssi_offset_db = -23
 
-[rf09_padfe]
-padfe = 2
-
 # RSSI push:
 [rssi]
 peer = "127.0.0.1:10031"

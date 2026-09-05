@@ -47,7 +47,7 @@ use crate::{
     radio::Radio,
     registers::{
         BbcnTxfl, DevicePartNumber, EnergyDetectionMode, RfClko, RfnCmd, RfnIrqm, 
-        RfnPac, TransceiverCmd, TransceiverState,
+        TransceiverCmd, TransceiverState,
     },
     spi::{self, Bbc},
     stats::RadioStats,
@@ -418,7 +418,7 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
     // Identify the deployed binary up front: BUILD_ID is git sha (+ "-dirty")
     // and a build timestamp, stamped by build.rs. On a satellite with no console
     // this is the only way to confirm which image is actually running.
-    eprintln!("uhf_daemon build {}", env!("BUILD_ID"));
+    eprintln!("{:?} daemon build {}", profile, env!("BUILD_ID"));
 
     // L-Band is receive only, refuse transmission flags.
     // This also blocks flags for beacon queues for transmission.
@@ -548,14 +548,26 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
             })?;
         net = toml::from_str(&contents).map_err(io::Error::other)?;
 
+        eprintln!("config loaded: {}", path);
+    }
+
+    let clko_os = args
+        .clko_os
+        .or(net.frontend.clko_os)
+        .unwrap_or_else(|| profile.default_clko_os());
+    let rssi_offset_db = args
+        .rssi_offset_db
+        .or(net.frontend.rssi_offset_db)
+        .unwrap_or_else(|| profile.default_rssi_offset_db());
+
+    if args.config.is_some() {
         // Reject a config that would boot a deaf/dead radio (PT/RXDFE.SR hard
         // errors; AGCC/PADFE warnings). Only enforced when a config is supplied -
         // bench/dry-run runs with built-in defaults are unaffected.
-        validate_radio_for_flight(&radio);
-        if let Err(m) = flight_blocking_problems(&radio) {
+        validate_radio_for_flight(&radio, profile);
+        if let Err(m) = flight_blocking_problems(&radio, profile, clko_os) {
             return Err(io::Error::new(io::ErrorKind::InvalidData, m));
         }
-        eprintln!("config loaded: {}", path);
     }
 
     // -- SPI + GPIO device settings (CLI flag > TOML > default) ----------
@@ -658,14 +670,7 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
         );
     }
 
-    let clko_os = args
-        .clko_os
-        .or(net.frontend.clko_os)
-        .unwrap_or_else(|| profile.default_clko_os());
-    let rssi_offset_db = args
-        .rssi_offset_db
-        .or(net.frontend.rssi_offset_db)
-        .unwrap_or_else(|| profile.default_rssi_offset_db());
+    
 
     // -- radio initialisation (hardware only) ---------------------------
     // Retry a few times.
@@ -1804,7 +1809,7 @@ fn validate_radio_for_flight(radio: &Radio, profile: Profile) {
 
 /// Hard flight invariants: a config that violates these would boot a deaf radio,
 /// so refuse to start. Returns a combined message listing every violation.
-fn flight_blocking_problems(radio: &Radio) -> Result<(), String> {
+fn flight_blocking_problems(radio: &Radio, profile: Profile, clko_os: u8) -> Result<(), String> {
     let mut problems = Vec::new();
     let pt = radio.bbc0_pc.value.pt();
     if !profile.can_transmit() && clko_os != 3 {
