@@ -195,6 +195,31 @@ struct Args {
     #[arg(long)]
     dry_run: bool,
 
+    /// Which radio to drive.
+    /// `uhf` = the TX+RX UHF.
+    /// `lband` = the receive only 1.265 GHz.
+    /// L-Band gates transmission, the CLKO default and RSSI offset.
+    #[arg(long, value_enum, default_value_t = Profile::Uhf)]
+    profile: Profile,
+
+    /// L-Band: frequency of the uplink.
+    #[arg(long)]
+    rf_hz: Option<u64>,
+
+    /// L-Band: Si4112 synthesizer, oscillator frequency.
+    #[arg(long, default_value_t = 808_000_000)]
+    lo_hz: Option<u64>,
+
+    /// RF_CLKO.OS: 0=off, 1=26MHz, 2=32MHz, 3=16 MHz, 4=8, 5=4, 6=2, 7=1.
+    /// Defaults to 3 for profile `lband` and 0 for `uhf`.
+    #[arg(long)]
+    clko_os: Option<u8>,
+
+    /// dB added to the reported RSSI/EDV.
+    /// Defaults to -23 for L-Band, 0 for UHF. 
+    #[arg(long)]
+    rssi_offset_db: Option<i16>,
+
     /// Telemetry interval in milliseconds.
     #[arg(long, default_value = "100")]
     telemetry_ms: u64,
