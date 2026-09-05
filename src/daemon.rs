@@ -419,6 +419,25 @@ fn main() -> io::Result<()> {
     // this is the only way to confirm which image is actually running.
     eprintln!("uhf_daemon build {}", env!("BUILD_ID"));
 
+    // L-Band is receive only, refuse transmission flags.
+    // This also blocks flags for beacon queues for transmission.
+    if !args.profile.can_transmit() {
+        for (flag, set) in [
+            ("--tx-bind", args.tx_bind.is_some()),
+            ("--tx-uds", args.tx_uds.is_some()),
+            ("--beacon-port", args.beacon_port.is_some()),
+            ("--beacon-bind", args.beacon_bind.is_some()),
+            ("--beacon-uds", args.beacon_uds.is_some()),
+        ] {
+            if set {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("{flag} is not valid with --profile lband (receive only)"),
+                ));
+            }
+        }
+    }
+
     // -- sockets ---------------------------------------------------------
     // TX bind: --tx-bind wins (any address), else 127.0.0.1:--tx-port.
     let tx_addr: SocketAddr = match args.tx_bind.as_ref() {
@@ -434,12 +453,16 @@ fn main() -> io::Result<()> {
         None => format!("127.0.0.1:{}", args.rx_port),
     };
 
-    let mut tx_sock = match args.tx_uds.as_ref() {
-        Some(path) => {
-            remove_stale_uds(path)?;
-            TxListener::Uds(UnixDatagram::bind(path)?)
-        }
-        None => TxListener::Udp(UdpSocket::bind(tx_addr)?),
+    let mut tx_sock: Option<TxListener> = if args.profile.can_transmit() {
+        Some(match args.tx_uds.as_ref() {
+            Some(path) => {
+                remove_stale_uds(path)?;
+                TxListener::Uds(UnixDatagram::bind(path)?)
+            }
+            None => TxListener::Udp(UdpSocket::bind(tx_addr)?),
+        })
+    } else {
+        None
     };
 
     let rx_sock = match args.rx_uds.as_ref() {
