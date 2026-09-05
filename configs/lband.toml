@@ -1,0 +1,57 @@
+# AT86RF215 daemon config - L-band uplink receiver.
+#
+# Applied via `lband_daemon --config configs/lband.toml`.
+# Only fields that differ from the register default need to appear here
+# (see src/config.rs)
+# 
+
+# -- PHY type + baseband: PT=1 = MR-FSK (PT=0 is PHY OFF, a silent failure) -
+# The daemon layers bben/txafcs/fcsfe on top of this at init, but PT must be
+# set here or the modulator never runs.
+[bbc0_pc]
+pt = 1
+
+# -- FSK modulation index: midx=1 * midxs=1 -> h=0.5 (MSK) ------------------
+[bbc0_fskc0]
+midx = 1
+midxs = 1
+
+# -- Direct modulation (datasheet 6.10.4.2: required for all FSK modes) -----
+# Pairs with rf09_txdfe.dm below.
+[bbc0_fskdm]
+en = true
+
+# -- RX digital frontend (Table 6-51 SR + Table 6-60 sub-1GHz, mod index 1/2)
+[rf09_rxdfe]
+sr = 10        # fS = 400 kHz for 50 kHz symbols (reset 0 => 4 MHz = deaf)
+
+[rf09_agcc]
+en = true
+
+[rf09_agcs]
+tgt = 1
+
+# No TX here.
+
+# -- Frontend ------------------------------------
+
+[frontend]
+# Frequency for CLKO.
+clko_os = 3
+# Gain from antenna to RF port.
+rssi_offset_db = -23
+
+[rf09_padfe]
+padfe = 2
+
+# RSSI push:
+[rssi]
+peer = "127.0.0.1:10031"
+
+[spi]
+dev = "/dev/spidev1.1"
+hz  = 1000000
+
+[gpio]
+chip = "/dev/gpiochip3"
+line = 31
