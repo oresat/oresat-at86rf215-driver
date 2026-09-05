@@ -999,8 +999,13 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
                         let _ = spi::read_register(dev, &mut radio.rf09_rssi);
                         let _ = spi::read_register(dev, &mut radio.rf09_edv);
                         let _ = spi::read_register(dev, &mut radio.rf09_agcs);
-                        stats.update_rssi(radio.rf09_rssi.value.rssi());
-
+                        // Leave 127 the specified "invalid" value.
+                        let raw = radio.rf09_rssi.value.rssi();
+                        stats.update_rssi(if raw == 127 {
+                            127
+                        } else {
+                            (raw as i16).saturating_add(rssi_offset_db).clamp(-128, 126) as i8
+                        });
                         // Health backstop. The chip should be receiving when idle.
                         // If it is parked in an unexpected non-operational state
                         // (TrxOff/Reset - e.g. a brownout reset or a TRXERR whose
@@ -1327,7 +1332,8 @@ fn init_radio(
         "front-end: RF09_PADFE={} ({})",
         fe,
         match fe {
-            0 => "disabled - external PA/LNA NOT keyed",
+            (0, Profile::Lband) => "disabled",
+            (0, Profile::Uhf) => "disabled - external PA/LNA NOT keyed",
             1 => "FE_MODE_4",
             2 => "FE_MODE_5",
             _ => "FE_MODE_6",
@@ -1345,7 +1351,11 @@ fn init_radio(
     spi::write_register(dev, &radio.bbc0_pc)?;
     eprintln!("FCS filter: {}", if fcs_filter { "on" } else { "off (bad-CRC frames still raise RXFE)" });
 
-    
+    // Set TX PA to minimum power for receive only L-Band.
+    if !profile.can_transmit() {
+        radio.rf09_pac.value = radio.rf09_pac.value.with_txpwr(0);
+        spi::write_register(dev, &radio.rf09_pac)?;
+    }
 
     // 5. Enable RXFE + TXFE interrupts, plus AGC hold/release (AGCH/AGCR) which
     //    drive carrier sense: AGCH fires the instant the receiver locks onto an
@@ -1633,6 +1643,13 @@ fn service_radio_irqs(
         link.rx_started = Instant::now();
     }
 
+    if irqs.txfe() && !profile.can_transmit() {
+        eprintln!(
+            "{}",
+            color("ERROR, TXFE on receive only L-Band", "31")
+        );
+    }
+
     // TXFE: transmission complete - free the TX slot and re-enter Rx.
     if irqs.txfe() {
         link.tx_busy = false;
@@ -1835,7 +1852,10 @@ fn receive_frame(
     //    latched during reception (EDC=AUTO) and still holds the real dBm value
     spi::read_register(dev, &mut radio.rf09_rssi)?;
     spi::read_register(dev, &mut radio.rf09_edv)?;
-    let edv = radio.rf09_edv.value.edv();
+    // Correct edv for L-Band.
+    let edv = (radio.rf09_edv.value.edv() as i16)
+        .saturating_add(offset_db)
+        .clamp(i8::MIN as i16, i8::MAX as i16 - 1) as i8;
 
     // 5. On a bad CRC, log the raw bytes + level so noise (random/garbled) is
     //    distinguishable from a real frame with a CRC/config mismatch, then drop.
