@@ -46,8 +46,8 @@ use oresat_at86rf215_driver::{
     freq::{Band, PllSettings},
     radio::Radio,
     registers::{
-        BbcnTxfl, DevicePartNumber, EnergyDetectionMode, RfnCmd, RfnIrqm, TransceiverCmd,
-        TransceiverState,
+        BbcnTxfl, DevicePartNumber, EnergyDetectionMode, RfClko, RfnCmd, RfnIrqm, 
+        RfnPac, TransceiverCmd, TransceiverState,
     },
     spi::{self, Bbc},
     stats::RadioStats,
