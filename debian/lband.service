@@ -1,0 +1,11 @@
+[Unit]
+Description=AT86RF215 L-Band radio daemon
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/lband_daemon --config /etc/oresat/lband.toml --rx-port 10026
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
