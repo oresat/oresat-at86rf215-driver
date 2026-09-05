@@ -593,7 +593,7 @@ fn main() -> io::Result<()> {
         || net.beacon.port.is_some()
         || net.beacon.bind.is_some()
         || net.beacon.uds.is_some();
-    let beacon_enabled = !args.no_beacon && net.beacon.enabled.unwrap_or(beacon_configured);
+    let beacon_enabled = !args.no_beacon && net.beacon.enabled.unwrap_or(beacon_configured) && args.profile.can_transmit();
     let beacon_addr: SocketAddr = match beacon_bind.as_ref() {
         Some(s) => s.parse().map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidInput, format!("beacon bind {s}: {e}"))
@@ -1413,7 +1413,15 @@ fn write_bbc0_config(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<
 /// The chip auto-transitions Tx -> TxPrep when the frame ends, firing
 /// a TXFE interrupt.  The GPIO_IRQ handler re-enters Rx on TXFE,
 /// so this function does **not** issue CMD=Rx itself.
-fn transmit_frame(radio: &mut Radio, dev: &mut spidev::Spidev, frame: &[u8]) -> io::Result<()> {
+fn transmit_frame(radio: &mut Radio, dev: &mut spidev::Spidev, frame: &[u8], profile: Profile) -> io::Result<()> {
+    // Last defense for transmission on L-Band: Fail.
+    if !profile.can_transmit() {
+        return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "transmit_frame called on receive only L-Band.",
+        ));
+    } 
+
     // 0. Bound the frame to the chip's 2047-octet TX buffer (payload + FCS).
     //    BBCn_TXFL/FBL are 11-bit, so an oversize frame would overrun the FIFO
     //    and TXFL would silently wrap - reject it loudly before touching the chip.
@@ -1478,9 +1486,21 @@ fn pump_tx(
     telemetry_sock: &Option<std::net::UdpSocket>,
     stats: &mut RadioStats,
     carrier_sense: bool,
+    profile: Profile,
 ) -> io::Result<()> {
     match spidev.as_mut() {
         Some(dev) => {
+            // For L-Band drop any frames queued to send.
+            if !profile.can_transmit() {
+                if !link.tx_queue.is_empty() {
+                    eprintln!(
+                        "warning: {} frame(s) queued on a receive-only profile - dropping.",
+                        link.tx_queue.len(),
+                    );
+                    link.tx_queue.clear();
+                }
+                return Ok(());
+            }
             // One frame in flight at a time; wait for TXFE before the next.
             if link.tx_busy {
                 return Ok(());
