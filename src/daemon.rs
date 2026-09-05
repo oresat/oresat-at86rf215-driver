@@ -614,12 +614,39 @@ fn main() -> io::Result<()> {
         sock
     });
 
+    // Set frequency from argument values.
+    let freq_hz = match (args.freq, args.rf_hz) {
+        (Some(f), _) => f,
+        (None, Some(rf)) => rf.checked_sub(args.lo_hz).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("--rf-hz {rf} is below --lo-hz {}", args.lo_hz),
+            )
+        })?,
+        (None, None) => args.profile.default_freq_hz(),
+    };
+    if let Some(rf) = args.rf_hz {
+        eprintln!(
+            "downconverter: RF {} Hz - LO {} Hz = IF {} HZ",
+            rf, args.lo_hz, freq_hz,
+        );
+    }
+
+    let clko_os = args
+        .clko_os
+        .or(net.frontend.clko_os)
+        .unwrap_or_else(|| args.profile.default_clko_os());
+    let rssi_offset_db = args
+        .rssi_offset_db
+        .or(net.frontend.rssi_offset_db)
+        .unwrap_or_else(|| arg.profile.default_rssi_offset_db());
+
     // -- radio initialisation (hardware only) ---------------------------
     // Retry a few times.
     if let Some(ref mut dev) = spidev {
         let mut attempt = 0u32;
         loop {
-            match init_radio(&mut radio, dev, args.freq, args.fcs_filter, args.verbose) {
+            match init_radio(&mut radio, dev, freq_hz, args.fcs_filter, args.verbose) {
                 Ok(()) => break,
                 Err(e) if attempt < 2 => {
                     attempt += 1;
@@ -1016,7 +1043,7 @@ fn main() -> io::Result<()> {
                                 match init_radio(
                                     &mut radio,
                                     dev,
-                                    args.freq,
+                                    freq_hz,
                                     args.fcs_filter,
                                     args.verbose,
                                 ) {
