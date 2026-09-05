@@ -12,3 +12,4 @@ pub mod stats;
 pub mod tui;
 pub mod typestate;
 pub mod units;
+pub mod daemon;

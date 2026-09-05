@@ -208,7 +208,7 @@ struct Args {
 
     /// L-Band: Si4112 synthesizer, oscillator frequency.
     #[arg(long, default_value_t = 808_000_000)]
-    lo_hz: Option<u64>,
+    lo_hz: u64,
 
     /// RF_CLKO.OS: 0=off, 1=26MHz, 2=32MHz, 3=16 MHz, 4=8, 5=4, 6=2, 7=1.
     /// Defaults to 3 for profile `lband` and 0 for `uhf`.
@@ -409,10 +409,11 @@ fn remove_stale_uds(path: &std::path::Path) -> io::Result<()> {
     }
 }
 
-// -- main --------------------------------------------------------------------
+// -- run --------------------------------------------------------------------
 
-fn main() -> io::Result<()> {
+fn run(default_profile: Profile) -> io::Result<()> {
     let args = Args::parse();
+    let profile = args.profile.unwrap_or(default_profile);
 
     // Identify the deployed binary up front: BUILD_ID is git sha (+ "-dirty")
     // and a build timestamp, stamped by build.rs. On a satellite with no console
@@ -421,7 +422,7 @@ fn main() -> io::Result<()> {
 
     // L-Band is receive only, refuse transmission flags.
     // This also blocks flags for beacon queues for transmission.
-    if !args.profile.can_transmit() {
+    if !profile.can_transmit() {
         for (flag, set) in [
             ("--tx-bind", args.tx_bind.is_some()),
             ("--tx-uds", args.tx_uds.is_some()),
@@ -453,7 +454,7 @@ fn main() -> io::Result<()> {
         None => format!("127.0.0.1:{}", args.rx_port),
     };
 
-    let mut tx_sock: Option<TxListener> = if args.profile.can_transmit() {
+    let mut tx_sock: Option<TxListener> = if profile.can_transmit() {
         Some(match args.tx_uds.as_ref() {
             Some(path) => {
                 remove_stale_uds(path)?;
@@ -593,7 +594,7 @@ fn main() -> io::Result<()> {
         || net.beacon.port.is_some()
         || net.beacon.bind.is_some()
         || net.beacon.uds.is_some();
-    let beacon_enabled = !args.no_beacon && net.beacon.enabled.unwrap_or(beacon_configured) && args.profile.can_transmit();
+    let beacon_enabled = !args.no_beacon && net.beacon.enabled.unwrap_or(beacon_configured) && profile.can_transmit();
     let beacon_addr: SocketAddr = match beacon_bind.as_ref() {
         Some(s) => s.parse().map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidInput, format!("beacon bind {s}: {e}"))
@@ -646,7 +647,7 @@ fn main() -> io::Result<()> {
                 format!("--rf-hz {rf} is below --lo-hz {}", args.lo_hz),
             )
         })?,
-        (None, None) => args.profile.default_freq_hz(),
+        (None, None) => profile.default_freq_hz(),
     };
     if let Some(rf) = args.rf_hz {
         eprintln!(
@@ -658,11 +659,11 @@ fn main() -> io::Result<()> {
     let clko_os = args
         .clko_os
         .or(net.frontend.clko_os)
-        .unwrap_or_else(|| args.profile.default_clko_os());
+        .unwrap_or_else(|| profile.default_clko_os());
     let rssi_offset_db = args
         .rssi_offset_db
         .or(net.frontend.rssi_offset_db)
-        .unwrap_or_else(|| arg.profile.default_rssi_offset_db());
+        .unwrap_or_else(|| profile.default_rssi_offset_db());
 
     // -- radio initialisation (hardware only) ---------------------------
     // Retry a few times.
