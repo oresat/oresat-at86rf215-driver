@@ -66,6 +66,47 @@ const SIGNAL: Token = Token(2);
 const GPIO_IRQ: Token = Token(3);
 const BEACON_SOCKET: Token = Token(4);
 
+
+// Profile - Which radio card the daemon drives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Profile {
+    // UHF half duplex.
+    Uhf,
+    // L-Band receive only.
+    Lband,
+}
+
+impl Profile {
+    // L-Band can not transmit.
+    const fn can_transmit(self) -> bool {
+        matches!(self, Profile::Uhf)
+    }
+
+    // Clock is only on for Lband.
+    const fn default_clko_os(self) -> u8 {
+        match self {
+            Profile::Uhf => 0,
+            Profile::Lband => 3,
+        }
+    }
+
+    // Adjust gain for L-Band, as increased gain compared to input.
+    const fn default_rssi_offset_db(self) -> i16 {
+        match self {
+            Profile::Uhf => 0,
+            Profile::Lband => -23,
+        }
+    }
+
+    // Default frequency for each UHF and L-Band.
+    const fn default_freq_hz(self) -> u64 {
+        match self {
+            Profile::Uhf => 436_500_000,
+            Profile::Lband => 457_000_000,
+        }
+    }
+}
+
 // -- CLI ---------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
