@@ -672,7 +672,7 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
     if let Some(ref mut dev) = spidev {
         let mut attempt = 0u32;
         loop {
-            match init_radio(&mut radio, dev, freq_hz, args.fcs_filter, args.verbose) {
+            match init_radio(&mut radio, dev, freq_hz, args.fcs_filter, args.verbose, profile, args.clko_os) {
                 Ok(()) => break,
                 Err(e) if attempt < 2 => {
                     attempt += 1;
@@ -1089,6 +1089,8 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
                                     freq_hz,
                                     args.fcs_filter,
                                     args.verbose,
+                                    profile,
+                                    args.clko_os,
                                 ) {
                                     Ok(()) => {
                                         stats.record_reinit();
@@ -1280,11 +1282,11 @@ fn init_radio(
     // that is not actually there.
     let (pn, vn) = spi::reset_and_identify(dev, radio)?;
 
-    radio.rd_clko.value = RfClko::new().with_os(clko_os).with_drv(1);
+    radio.rf_clko.value = RfClko::new().with_os(clko_os).with_drv(1);
     spi::write_register(dev, &radio.rf_clko)?;
     eprintln!(
         "CLKO: RF_CLKO.OS={} ({})",
-        clko,
+        clko_os,
         match clko_os {
             0 => "off",
             1 => "26 MHz",
@@ -1331,12 +1333,12 @@ fn init_radio(
     eprintln!(
         "front-end: RF09_PADFE={} ({})",
         fe,
-        match fe {
-            (0, Profile::Lband) => "disabled",
+        match (fe, profile) {
+            (0, Profile::Lband) => "disabled (receive only)",
             (0, Profile::Uhf) => "disabled - external PA/LNA NOT keyed",
-            1 => "FE_MODE_4",
-            2 => "FE_MODE_5",
-            _ => "FE_MODE_6",
+            (1, Profile::Uhf) => "FE_MODE_4",
+            (2, Profile::Uhf) => "FE_MODE_5",
+            (_, Profile::Uhf) => "FE_MODE_6",
         },
     );
 
@@ -1659,7 +1661,7 @@ fn service_radio_irqs(
 
     // RXFE: frame received - read it out and forward.
     if irqs.rxfe() {
-        match receive_frame(radio, dev, stats) {
+        match receive_frame(radio, dev, stats, offset_db) {
             Ok(Some(pkt)) => {
                 stats.record_rx(pkt.rssi);
                 let preview: String = pkt
@@ -1830,6 +1832,7 @@ fn receive_frame(
     radio: &mut Radio,
     dev: &mut spidev::Spidev,
     stats: &mut RadioStats,
+    offset_db: i16,
 ) -> io::Result<Option<RxPacket>> {
     // 1. Read FCS (CRC) validity, but defer the drop until after we have read
     //    the bytes - on a bad CRC we still want to log them so a real-but-
