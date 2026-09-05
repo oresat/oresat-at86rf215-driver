@@ -41,7 +41,7 @@ use clap::Parser;
 use mio::net::{UdpSocket, UnixDatagram};
 use mio::{Events, Interest, Poll, Registry, Token};
 
-use oresat_at86rf215_driver::{
+use crate::{
     comm::{BbcStatus, CommState, RfStatus, RxPacket},
     freq::{Band, PllSettings},
     radio::Radio,
@@ -199,8 +199,8 @@ struct Args {
     /// `uhf` = the TX+RX UHF.
     /// `lband` = the receive only 1.265 GHz.
     /// L-Band gates transmission, the CLKO default and RSSI offset.
-    #[arg(long, value_enum, default_value_t = Profile::Uhf)]
-    profile: Profile,
+    #[arg(long, value_enum)]
+    profile: Option<Profile>,
 
     /// L-Band: frequency of the uplink.
     #[arg(long)]
@@ -411,7 +411,7 @@ fn remove_stale_uds(path: &std::path::Path) -> io::Result<()> {
 
 // -- run --------------------------------------------------------------------
 
-fn run(default_profile: Profile) -> io::Result<()> {
+pub fn run(default_profile: Profile) -> io::Result<()> {
     let args = Args::parse();
     let profile = args.profile.unwrap_or(default_profile);
 
@@ -506,7 +506,9 @@ fn run(default_profile: Profile) -> io::Result<()> {
 
     // -- poll registry ---------------------------------------------------
     let mut poll = Poll::new()?;
-    tx_sock.register(poll.registry(), TX_SOCKET)?;
+    if let Some(ref mut t) = tx_sock {
+        t.register(poll.registry(), TX_SOCKET)?;
+    }
 
     // Register timerfd as a raw FD source.
     use std::os::fd::AsRawFd;
@@ -523,15 +525,15 @@ fn run(default_profile: Profile) -> io::Result<()> {
     // -- TOML config (optional) ---------------------------------------
     // One reader for both registers and beacon/RSSI/SPI/GPIO settings. Read
     // BEFORE opening SPI so [spi]/[gpio] can choose the device the daemon binds.
-    let mut net = oresat_at86rf215_driver::config::NetConfig::default();
+    let mut net = crate::config::NetConfig::default();
     if let Some(ref path) = args.config {
         let contents = std::fs::read_to_string(path)?;
         // Fail loud on any typos in a table name. RadioConfig has no deny_unknown_fields
         // (the register and net passes share the file), so a misspelt table like
         // `[rf09_rxdfee]` would otherwise be silently dropped -> a deaf radio.
-        oresat_at86rf215_driver::config::check_known_tables(&contents)
+        crate::config::check_known_tables(&contents)
             .map_err(|m| io::Error::new(io::ErrorKind::InvalidData, m))?;
-        let config: oresat_at86rf215_driver::config::RadioConfig =
+        let config: crate::config::RadioConfig =
             toml::from_str(&contents).map_err(io::Error::other)?;
         // An out-of-range register value panics inside the bitfield builders;
         // contain it so a bad config is a clean error (and a supervisor restart)
@@ -756,11 +758,19 @@ fn run(default_profile: Profile) -> io::Result<()> {
     // log only the transitions into and out of the failed state.
     let mut rssi_peer_down = false;
 
-    eprintln!(
-        "listening: TX on {}, RX forwarded to {}",
-        tx_sock.describe(&tx_addr.to_string(), &args.tx_uds),
-        rx_sock.describe(&rx_peer, &args.rx_uds),
-    );
+    match tx_sock {
+        Some(ref t) => eprintln!(
+            "listening: TX on {}, RX forwarded to {}",
+            t.describe(&tx_addr.to_string(), &args.tx_uds),
+            rx_sock.describe(&rx_peer, &args.rx_uds),
+        ),
+        None => eprintln!(
+            "listening: receive only, RX forwarded to {}",
+            rx_sock.describe(&rx_peer, &args.rx_uds),
+        ),
+    }
+
+
     if let Some(ref b) = beacon_sock {
         eprintln!("listening: beacon on {}", b.describe(&beacon_addr.to_string(), &beacon_uds));
     }
@@ -847,51 +857,54 @@ fn run(default_profile: Profile) -> io::Result<()> {
         for event in events.iter() {
             match event.token() {
                 TX_SOCKET => {
-                    // Drain every queued datagram into the transmit backlog. Do
-                    // NOT transmit inline: the radio sends one frame at a time and
-                    // the next is keyed only after TXFE (see pump_tx / LinkState),
-                    // so a burst is never collapsed by keying over an in-flight
-                    // frame. The mio UDP source is edge-triggered, so the recv loop
-                    // must run until WouldBlock or later datagrams are missed.
-                    loop {
-                        match tx_sock.recv(&mut pkt_buf) {
-                            Ok(n) if n > 0 => {
-                                let frame = &pkt_buf[..n];
+                    if let Some(ref tx_sock) = tx_sock {
+                        // Drain every queued datagram into the transmit backlog. Do
+                        // NOT transmit inline: the radio sends one frame at a time and
+                        // the next is keyed only after TXFE (see pump_tx / LinkState),
+                        // so a burst is never collapsed by keying over an in-flight
+                        // frame. The mio UDP source is edge-triggered, so the recv loop
+                        // must run until WouldBlock or later datagrams are missed.
+                        loop {
+                            match tx_sock.recv(&mut pkt_buf) {
+                                Ok(n) if n > 0 => {
+                                    let frame = &pkt_buf[..n];
 
-                                // Confirm the local client -> daemon UDP/UDS hop:
-                                // log every datagram accepted on the TX socket
-                                // before it is queued for the radio.
-                                let preview: String = frame
-                                    .iter()
-                                    .take(16)
-                                    .map(|b| format!("{:02X}", b))
-                                    .collect::<Vec<_>>()
-                                    .join(" ");
-                                let suffix = if frame.len() > 16 { "..." } else { "" };
-                                eprintln!("TX socket: {} B from client [{}{}]", n, preview, suffix);
+                                    // Confirm the local client -> daemon UDP/UDS hop:
+                                    // log every datagram accepted on the TX socket
+                                    // before it is queued for the radio.
+                                    let preview: String = frame
+                                        .iter()
+                                        .take(16)
+                                        .map(|b| format!("{:02X}", b))
+                                        .collect::<Vec<_>>()
+                                        .join(" ");
+                                    let suffix = if frame.len() > 16 { "..." } else { "" };
+                                    eprintln!("TX socket: {} B from client [{}{}]", n, preview, suffix);
 
-                                link.enqueue(frame);
-                            }
-                            Ok(_) => break,
-                            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                            Err(e) => {
-                                // A transient socket error must not kill the daemon
-                                // (the supervisor would only restart into it). Log
-                                // and stop draining this readiness; retry next wake.
-                                eprintln!("TX socket recv error: {e}");
-                                break;
+                                    link.enqueue(frame);
+                                }
+                                Ok(_) => break,
+                                Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                                Err(e) => {
+                                    // A transient socket error must not kill the daemon
+                                    // (the supervisor would only restart into it). Log
+                                    // and stop draining this readiness; retry next wake.
+                                    eprintln!("TX socket recv error: {e}");
+                                    break;
+                                }
                             }
                         }
+                        pump_tx(
+                            &mut link,
+                            &mut radio,
+                            &mut spidev,
+                            &rx_sock,
+                            &telemetry_sock,
+                            &mut stats,
+                            !args.no_carrier_sense,
+                            profile,
+                        )?;
                     }
-                    pump_tx(
-                        &mut link,
-                        &mut radio,
-                        &mut spidev,
-                        &rx_sock,
-                        &telemetry_sock,
-                        &mut stats,
-                        !args.no_carrier_sense,
-                    )?;
                 }
 
                 BEACON_SOCKET => {
@@ -929,6 +942,7 @@ fn run(default_profile: Profile) -> io::Result<()> {
                             &telemetry_sock,
                             &mut stats,
                             !args.no_carrier_sense,
+                            profile,
                         )?;
                     }
                 }
@@ -1137,6 +1151,7 @@ fn run(default_profile: Profile) -> io::Result<()> {
                         &telemetry_sock,
                         &mut stats,
                         !args.no_carrier_sense,
+                        profile,
                     )?;
                 }
 
@@ -1191,6 +1206,7 @@ fn run(default_profile: Profile) -> io::Result<()> {
                         &telemetry_sock,
                         &mut stats,
                         !args.no_carrier_sense,
+                        profile,
                     )?;
                 }
 
@@ -1250,12 +1266,32 @@ fn init_radio(
     freq_hz: u64,
     fcs_filter: bool,
     rxfs_irq: bool,
+    profile: Profile,
+    clko_os: u8,
 ) -> io::Result<()> {
     // 1-2. Chip reset + identity check. A garbage/floating part number (0xFF =
     // MISO floating: chip unpowered, wrong CS, or wiring fault) must fail loud so
     // the init-retry / supervisor path runs instead of the daemon driving a chip
     // that is not actually there.
     let (pn, vn) = spi::reset_and_identify(dev, radio)?;
+
+    radio.rd_clko.value = RfClko::new().with_os(clko_os).with_drv(1);
+    spi::write_register(dev, &radio.rf_clko)?;
+    eprintln!(
+        "CLKO: RF_CLKO.OS={} ({})",
+        clko,
+        match clko_os {
+            0 => "off",
+            1 => "26 MHz",
+            2 => "32 MHz",
+            3 => "16 MHz",
+            4 => "8 MHz",
+            5 => "4 MHz",
+            6 => "2 MHz",
+            _ => "1 MHz",
+        },
+    );
+
     eprintln!("chip: {:?} v{}", pn, vn);
     if let DevicePartNumber::Unknown(b) = pn {
         return Err(io::Error::new(
@@ -1309,6 +1345,8 @@ fn init_radio(
     spi::write_register(dev, &radio.bbc0_pc)?;
     eprintln!("FCS filter: {}", if fcs_filter { "on" } else { "off (bad-CRC frames still raise RXFE)" });
 
+    
+
     // 5. Enable RXFE + TXFE interrupts, plus AGC hold/release (AGCH/AGCR) which
     //    drive carrier sense: AGCH fires the instant the receiver locks onto an
     //    inbound signal and AGCR when it lets go, bracketing a reception so the
@@ -1357,7 +1395,7 @@ fn init_radio(
 
 /// Write RF09 configuration registers (channel plan, RX/TX filters, AGC, PA).
 fn write_rf09_config(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<()> {
-    use oresat_at86rf215_driver::registers::BulkWrites;
+    use crate::registers::BulkWrites;
     use std::io::Write;
 
     let mut bw = BulkWrites::new();
@@ -1380,7 +1418,7 @@ fn write_rf09_config(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<
 
 /// Write BBC0 PHY configuration registers (FSK/OFDM/OQPSK settings).
 fn write_bbc0_config(radio: &mut Radio, dev: &mut spidev::Spidev) -> io::Result<()> {
-    use oresat_at86rf215_driver::registers::BulkWrites;
+    use crate::registers::BulkWrites;
     use std::io::Write;
 
     let mut bw = BulkWrites::new();
@@ -1489,19 +1527,20 @@ fn pump_tx(
     carrier_sense: bool,
     profile: Profile,
 ) -> io::Result<()> {
+    // For L-Band drop any frames queued to send.
+    if !profile.can_transmit() {
+        if !link.tx_queue.is_empty() {
+            eprintln!(
+                "warning: {} frame(s) queued on a receive-only profile - dropping.",
+                link.tx_queue.len(),
+            );
+            link.tx_queue.clear();
+        }
+        return Ok(());
+    }
+    
     match spidev.as_mut() {
         Some(dev) => {
-            // For L-Band drop any frames queued to send.
-            if !profile.can_transmit() {
-                if !link.tx_queue.is_empty() {
-                    eprintln!(
-                        "warning: {} frame(s) queued on a receive-only profile - dropping.",
-                        link.tx_queue.len(),
-                    );
-                    link.tx_queue.clear();
-                }
-                return Ok(());
-            }
             // One frame in flight at a time; wait for TXFE before the next.
             if link.tx_busy {
                 return Ok(());
@@ -1513,7 +1552,7 @@ fn pump_tx(
             let Some(frame) = link.tx_queue.pop_front() else {
                 return Ok(());
             };
-            match transmit_frame(radio, dev, &frame) {
+            match transmit_frame(radio, dev, &frame, profile) {
                 Ok(()) => {
                     link.tx_busy = true;
                     link.tx_started = Instant::now();

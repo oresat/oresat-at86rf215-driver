@@ -268,7 +268,7 @@ fn is_default<T: Default + PartialEq>(v: &T) -> bool {
 /// daemon tables of [`NetConfig`]. Used by [`check_known_tables`] to reject typos.
 pub const KNOWN_TABLES: &[&str] = &[
     // NetConfig
-    "beacon", "rssi", "spi", "gpio",
+    "beacon", "rssi", "spi", "gpio", "frontend",
     // RadioConfig - general
     "rf_cfg", "rf_clko", "rf_bmdvc", "rf_xoc", "rf_iqifc0", "rf_iqifc1",
     // RF09
@@ -335,6 +335,7 @@ pub struct NetConfig {
     pub rssi: RssiConfig,
     pub spi: SpiConfig,
     pub gpio: GpioConfig,
+    pub frontend: FrontendConfig,
 }
 
 /// `[beacon]` table: the dedicated TX-input socket to send the beacon frames to.
@@ -396,6 +397,15 @@ pub struct GpioConfig {
     /// GPIO line/offset for the radio IRQ, rising edge (default 25).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct FrontendConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rssi_offset_db: Option<i16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clko_os: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
