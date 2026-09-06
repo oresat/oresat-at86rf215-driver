@@ -111,8 +111,8 @@ impl Profile {
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "uhf_daemon",
-    about = "AT86RF215 UHF radio <-> UDP/UDS daemon"
+    name = "daemon",
+    about = "AT86RF215 radio <-> UDP/UDS daemon"
 )]
 struct Args {
     /// UDP port to receive TX datagrams on (ignored when `--tx-uds` is set).
