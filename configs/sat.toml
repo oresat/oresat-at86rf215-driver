@@ -15,6 +15,16 @@
 [bbc0_pc]
 pt = 1
 
+# --- FEC (Forward Error Correction) ----------------------------------------
+[bbc0_fskc2]
+fecie = false # Interleaving enable
+
+[bbc0_fskc4]
+csfd0 = 0x2 # Coded IEEE mode
+
+# [bbc0_fskphrtx]
+# dw = true    # data whitening
+
 # -- FSK modulation index: midx=1 * midxs=1 -> h=0.5 (MSK) ------------------
 [bbc0_fskc0]
 midx = 1
@@ -50,7 +60,7 @@ pacur = 3
 
 # -- External front-end (PA/LNA/switch) ------------------------------------
 # padfe drives the FE control pins: 0 = disabled (external PA/LNA never keyed),
-# 1 = FE_MODE_4, 2 = FE_MODE_5, 3 = FE_MODE_6. 
+# 1 = FE_MODE_4, 2 = FE_MODE_5, 3 = FE_MODE_6.
 # The chip resets PADFE to 0, so an unset config leaves the FE off.
 [rf09_padfe]
 padfe = 2
