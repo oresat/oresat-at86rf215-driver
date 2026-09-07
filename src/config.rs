@@ -63,6 +63,13 @@ pub struct RadioConfig {
     #[serde(skip_serializing_if = "is_default")]
     pub rf09_padfe: RfnPadfeConfig,
 
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_cmd: RfnCmdConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_txdaci: RfnTxdaciConfig,
+    #[serde(skip_serializing_if = "is_default")]
+    pub rf09_txdacq: RfnTxdacqConfig,
+
     // PLL configuration
     #[serde(skip_serializing_if = "is_default")]
     pub rf09_pll: RfnPllConfig,
@@ -272,9 +279,9 @@ pub const KNOWN_TABLES: &[&str] = &[
     // RadioConfig - general
     "rf_cfg", "rf_clko", "rf_bmdvc", "rf_xoc", "rf_iqifc0", "rf_iqifc1",
     // RF09
-    "rf09_auxs", "rf09_cs", "rf09_ccf0", "rf09_cn", "rf09_rxbwc", "rf09_rxdfe",
-    "rf09_agcc", "rf09_agcs", "rf09_txcutc", "rf09_txdfe", "rf09_pac",
-    "rf09_padfe", "rf09_pll",
+    "rf09_auxs", "rf09_cs", "rf09_ccf0", "rf09_cn", "rf09_cmd","rf09_rxbwc",
+    "rf09_rxdfe", "rf09_txdaci", "rf09_txdacq", "rf09_agcc", "rf09_agcs",
+    "rf09_txcutc", "rf09_txdfe", "rf09_pac", "rf09_padfe", "rf09_pll",
     // RF24
     "rf24_auxs", "rf24_cs", "rf24_ccf0", "rf24_cn", "rf24_rxbwc", "rf24_rxdfe",
     "rf24_agcc", "rf24_agcs", "rf24_txcutc", "rf24_txdfe", "rf24_pac",

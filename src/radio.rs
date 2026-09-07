@@ -540,6 +540,10 @@ impl Radio {
         self.rf09_padfe.value = RfnPadfe::from(&config.rf09_padfe);
         self.rf09_pll.value = RfnPll::from(&config.rf09_pll);
 
+        self.rf09_cmd.value = RfnCmd::from(&config.rf09_cmd);
+        self.rf09_txdaci.value = RfnTxdaci::from(&config.rf09_txdaci);
+        self.rf09_txdacq.value = RfnTxdacq::from(&config.rf09_txdacq);
+
         self.rf24_auxs.value = RfnAuxs::from(&config.rf24_auxs);
         self.rf24_cs.value = RfnCs::from(&config.rf24_cs);
         self.rf24_ccf0.value = RfnCcf0::from(&config.rf24_ccf0);
@@ -638,6 +642,11 @@ impl Radio {
             rf09_cs: RfnCsConfig::from(&self.rf09_cs.value),
             rf09_ccf0: RfnCcf0Config::from(&self.rf09_ccf0.value),
             rf09_cn: RfnCnConfig::from(&self.rf09_cn.value),
+
+            rf09_cmd: RfnCmdConfig::from(&self.rf09_cmd.value),
+            rf09_txdaci: RfnTxdaciConfig::from(&self.rf09_txdaci.value),
+            rf09_txdacq: RfnTxdacqConfig::from(&self.rf09_txdacq.value),
+
             rf09_rxbwc: RfnRxbwcConfig::from(&self.rf09_rxbwc.value),
             rf09_rxdfe: RfnRxdfeConfig::from(&self.rf09_rxdfe.value),
             rf09_agcc: RfnAgccConfig::from(&self.rf09_agcc.value),
