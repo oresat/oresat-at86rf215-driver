@@ -36,5 +36,5 @@ sudo uhf_daemon --rx-port 10025 --tx-port 10016 --config uhf.toml
 cargo deb --target=armv7-unknown-linux-gnueabihf
 
 # On c3
-sudo apt install ./.deb
+sudo apt install ./oresat-at86rf215-driver_<version>_armhf.deb
 ```
