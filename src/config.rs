@@ -402,10 +402,15 @@ pub struct GpioConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct FrontendConfig {
+    /// dB added to every RSSI/EDV report.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rssi_offset_db: Option<i16>,
+    /// `RF_CLKO.OS` output select: 0 = off, 3 = 16MHz, (0..7).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clko_os: Option<u8>,
+    /// `RF_CLKO.DRV` drive strength: 0 = 2mA, 1 = 4mA, 2 = 6mA, 3 = 8mA
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clko_drv: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
