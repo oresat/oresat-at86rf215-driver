@@ -107,8 +107,11 @@ impl Profile {
     }
 }
 
+/// Settings for `RF_CLKO`, written right after every chip reset.
 struct Clko {
+    /// `RF_CLKO.OS` clock output select, 0..=7.
     os: u8,
+    /// `RF_CLKO.DRV` drive strength, 0..=3. (2/4/6/8 mA).
     drv: u8,
 }
 
