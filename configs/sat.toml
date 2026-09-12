@@ -1,6 +1,6 @@
 # AT86RF215 daemon config - satellite side (oresat-c3).
 #
-# Applied via `uhf_daemon --config configs/sat.toml`.
+# Applied via `uhf_daemon --config configs/uhf.toml`.
 # Only fields that differ from the register default need to appear here; the
 # RadioConfig deserializer fills in Default::default() for everything else
 # (see src/config.rs).

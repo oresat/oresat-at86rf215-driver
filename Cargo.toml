@@ -15,10 +15,10 @@ systemd-units = [
 assets = [
     ["target/release/uhf_daemon", "usr/bin/", "755"],
     ["target/release/lband_daemon", "usr/bin/", "755"],
-    ["configs/sat.toml", "etc/oresat/", "644"],
+    ["configs/uhf.toml", "etc/oresat/", "644"],
     ["configs/lband.toml", "etc/oresat/", "644"],
 ]
-conf-files = ["/etc/oresat/sat.toml", "/etc/oresat/lband.toml"]
+conf-files = ["/etc/oresat/uhf.toml", "/etc/oresat/lband.toml"]
 
 
 [dependencies]

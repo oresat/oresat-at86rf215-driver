@@ -29,7 +29,7 @@ rustup target add armv7-unknown-linux-gnueabihf
 uhf_daemon --config ground.toml --tx-bind 0.0.0.0:10025 --rx-peer <yamcs-host-ip>:10016
 
 # Satellite
-sudo uhf_daemon --rx-port 10025 --tx-port 10016 --config sat.toml
+sudo uhf_daemon --rx-port 10025 --tx-port 10016 --config uhf.toml
 ```
 ### Build .deb package
 ```

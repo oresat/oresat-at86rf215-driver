@@ -5,14 +5,14 @@
 //!
 //! Usage:
 //!   cargo run --example tx_uhf -- --spi /dev/spidev0.0 --freq 463500000
-//!   cargo run --example tx_uhf -- --config configs/sat.toml --freq 463500000
+//!   cargo run --example tx_uhf -- --config configs/uhf.toml --freq 463500000
 //!   cargo run --example tx_uhf -- --repeat --gap-ms 5
 //!   cargo run --example tx_uhf -- --repeat --h 1.0 --whiten      # Sunde 2-FSK
 //!   cargo run --example tx_uhf -- --repeat --h 1.5 --whiten      # wide FSK
 //!
 //! The frame payload defaults to a short test pattern. Use `--payload` to
 //! specify hex bytes (example: `--payload "0BADCAFE"`). A `--config <toml>`
-//! applies a RadioConfig (example: PA settings from `configs/sat.toml`) before
+//! applies a RadioConfig (example: PA settings from `configs/uhf.toml`) before
 //! the channel is programmed.
 
 use std::{
@@ -244,7 +244,7 @@ fn main() -> io::Result<()> {
 
     // -- apply optional TOML config -------------------------------------
     // Flushes the RF09 TX-path registers (txcutc, txdfe, pac, padfe) which
-    // is the subset sat.toml is expected to set. apply_channel_rf09 below
+    // is the subset uhf.toml is expected to set. apply_channel_rf09 below
     // will overwrite rf09_cs/ccf0/cn from the TOML - intentional.
     if let Some(path) = &args.config {
         let toml_str = read_to_string(path)?;
