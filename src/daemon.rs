@@ -113,8 +113,10 @@ struct Clko {
 }
 
 impl Clko {
+    /// Minimum DRV as default. Saves power and tests working on `Oresat C3`.
     const DEFAULT_DRV: u8 = 0;
 
+    /// Values from toml do not get checked by clap range test, validate here.
     fn validate(self) -> Result<(), String> {
         if self.os > 7 {
             return Err(format!("RF_CLKO.OS={} is out of range (0..=7)", self.os));
