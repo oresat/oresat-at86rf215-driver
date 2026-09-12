@@ -107,6 +107,46 @@ impl Profile {
     }
 }
 
+struct Clko {
+    os: u8,
+    drv: u8,
+}
+
+impl Clko {
+    const DEFAULT_DRV: u8 = 0;
+
+    fn validate(self) -> Result<(), String> {
+        if self.os > 7 {
+            return Err(format!("RF_CLKO.OS={} is out of range (0..=7)", self.os));
+        }
+        if self.drv > 3 {
+            return Err(format!("RF_CLKO.DRV={} is out of range (0..=3)"), self.drv)
+        }
+        Ok(())
+    }
+
+    fn register(self) -> RfClko {
+        RfClko::new().with_os(self.os).with_drv(self.drv)
+    }
+
+    fn os_label(self) -> &'static str {
+        match self.os {
+            0 => "off",
+            1 => "26 MHz",
+            2 => "32 MHz",
+            3 => "16 MHz",
+            4 => "8 MHz",
+            5 => "4 MHz",
+            6 => "2 MHz",
+            _ => "1 MHz",
+        }
+    }
+
+    fn drv_ma(self) -> u8 {
+        2 + 2 * self.drv
+    }
+}
+
 // -- CLI ---------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
@@ -212,8 +252,12 @@ struct Args {
 
     /// RF_CLKO.OS: 0=off, 1=26MHz, 2=32MHz, 3=16 MHz, 4=8, 5=4, 6=2, 7=1.
     /// Defaults to 3 for profile `lband` and 0 for `uhf`.
-    #[arg(long)]
+    #[arg(long, value_parser = clap::value_parser!(u8).range(0..=7))]
     clko_os: Option<u8>,
+
+    /// RF_CLKO.DRV drive strength: 0 = 2mA, 1 = 4mA, 2 = 6mA, 3 = 8mA
+    #[arg(long, value_parser = clap::value_parser!(u8).range(0..=3))]
+    clko_drv: Option<u8>,
 
     /// dB added to the reported RSSI/EDV.
     /// Defaults to -23 for L-Band, 0 for UHF. 
@@ -546,6 +590,10 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
                      (a bitfield setter panicked) - check the offending value against the datasheet",
                 )
             })?;
+
+        if config.rf_clko.os.is_some() || config.rf_clko.drv.is_some() {
+            eprintln!("warning: [rf_clko] in {path} is overridden at init by frontend config or CLI arguments.");
+        }
         net = toml::from_str(&contents).map_err(io::Error::other)?;
 
         eprintln!("config loaded: {}", path);
@@ -677,7 +725,7 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
     if let Some(ref mut dev) = spidev {
         let mut attempt = 0u32;
         loop {
-            match init_radio(&mut radio, dev, freq_hz, args.fcs_filter, args.verbose, profile, clko_os) {
+            match init_radio(&mut radio, dev, freq_hz, args.fcs_filter, args.verbose, profile, clko) {
                 Ok(()) => break,
                 Err(e) if attempt < 2 => {
                     attempt += 1;
@@ -1097,7 +1145,7 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
                                     args.fcs_filter,
                                     args.verbose,
                                     profile,
-                                    clko_os,
+                                    clko,
                                 ) {
                                     Ok(()) => {
                                         stats.record_reinit();
@@ -1283,7 +1331,7 @@ fn init_radio(
     fcs_filter: bool,
     rxfs_irq: bool,
     profile: Profile,
-    clko_os: u8,
+    clko: Clko,
 ) -> io::Result<()> {
     // 1-2. Chip reset + identity check. A garbage/floating part number (0xFF =
     // MISO floating: chip unpowered, wrong CS, or wiring fault) must fail loud so
