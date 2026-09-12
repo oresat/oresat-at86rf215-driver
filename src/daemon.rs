@@ -1291,7 +1291,8 @@ fn init_radio(
     // that is not actually there.
     let (pn, vn) = spi::reset_and_identify(dev, radio)?;
 
-    radio.rf_clko.value = RfClko::new().with_os(clko_os).with_drv(1);
+    // Default at lowest drv. Tests working and lowers power useage.
+    radio.rf_clko.value = RfClko::new().with_os(clko_os).with_drv(0);
     spi::write_register(dev, &radio.rf_clko)?;
     eprintln!(
         "CLKO: RF_CLKO.OS={} ({})",
