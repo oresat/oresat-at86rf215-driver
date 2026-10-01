@@ -5,14 +5,14 @@
 //!
 //! Usage:
 //!   cargo run --example tx_uhf -- --spi /dev/spidev0.0 --freq 463500000
-//!   cargo run --example tx_uhf -- --config configs/sat.toml --freq 463500000
+//!   cargo run --example tx_uhf -- --config configs/uhf.toml --freq 463500000
 //!   cargo run --example tx_uhf -- --repeat --gap-ms 5
 //!   cargo run --example tx_uhf -- --repeat --h 1.0 --whiten      # Sunde 2-FSK
 //!   cargo run --example tx_uhf -- --repeat --h 1.5 --whiten      # wide FSK
 //!
 //! The frame payload defaults to a short test pattern. Use `--payload` to
 //! specify hex bytes (example: `--payload "0BADCAFE"`). A `--config <toml>`
-//! applies a RadioConfig (example: PA settings from `configs/sat.toml`) before
+//! applies a RadioConfig (example: PA settings from `configs/uhf.toml`) before
 //! the channel is programmed.
 
 use std::{
@@ -93,6 +93,18 @@ struct Args {
     /// Enable IEEE 802.15.4g PN9 data whitening on the PSDU (FSKPHRTX.DW=1).
     #[arg(long)]
     whiten: bool,
+
+    /// Transmit with IEEE 802.15.4g FEC
+    #[arg(long)]
+    fec: bool,
+    
+    /// FEC scheme RSC instead of NRNSC.
+    #[arg(long, requires = "fec")]
+    fec_rsc: bool,
+
+    /// Disable interleaving.
+    #[arg(long, requires = "fec")]
+    fec_no_interleave: bool,
 
     /// Skip the recommended TX filter tuning. By default the example
     /// programs TXCUTC.PARAMP/LPFCUT and TXDFE.RCUT per datasheet
@@ -244,7 +256,7 @@ fn main() -> io::Result<()> {
 
     // -- apply optional TOML config -------------------------------------
     // Flushes the RF09 TX-path registers (txcutc, txdfe, pac, padfe) which
-    // is the subset sat.toml is expected to set. apply_channel_rf09 below
+    // is the subset uhf.toml is expected to set. apply_channel_rf09 below
     // will overwrite rf09_cs/ccf0/cn from the TOML - intentional.
     if let Some(path) = &args.config {
         let toml_str = read_to_string(path)?;
@@ -350,10 +362,27 @@ fn main() -> io::Result<()> {
 
     // -- PSDU data whitening (PN9 scrambler per IEEE 802.15.4g) ---------
     // Off by default to match prior behaviour.
-    radio.bbc0_fskphrtx.value = radio.bbc0_fskphrtx.value.with_dw(args.whiten);
+    radio.bbc0_fskc2.value = radio
+        .bbc0_fskc2
+        .value
+        .with_fecs(args.fec_rsc)
+        .with_fecie(!args.fec_no_interleave);
+    spi::write_register(&mut dev, &radio.bbc0_fskc2)?;
+    radio.bbc0_fskphrtx.value = radio
+        .bbc0_fskphrtx
+        .value
+        .with_dw(args.whiten)
+        .with_sfd(args.fec);
     spi::write_register(&mut dev, &radio.bbc0_fskphrtx)?;
     if args.whiten {
-        eprintln!("whitening: PSDU PN9 scrambler enabled (FSKPHRTX.DW=1)");
+        eprintln!("whitening: PSDU PN9 enabled");
+    }
+    if args.fec {
+        eprintln!(
+            "fec: enabled (SFD1) scheme={} interleave={}",
+            if args.fec_rsc { "RSC" } else { "NRNSC" },
+            !args.fec_no_interleave,
+        );
     }
 
     // -- enable baseband + auto-FCS -------------------------------------

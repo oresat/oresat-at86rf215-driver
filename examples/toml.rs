@@ -1,6 +1,5 @@
 use oresat_at86rf215_driver::radio::*;
 use oresat_at86rf215_driver::registers::*;
-use toml;
 
 
 fn main() {
