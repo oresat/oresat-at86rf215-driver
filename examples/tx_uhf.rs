@@ -94,6 +94,18 @@ struct Args {
     #[arg(long)]
     whiten: bool,
 
+    /// Transmit with IEEE 802.15.4g FEC
+    #[arg(long)]
+    fec: bool,
+    
+    /// FEC scheme RSC instead of NRNSC.
+    #[arg(long, requires = "fec")]
+    fec_rsc: bool,
+
+    /// Disable interleaving.
+    #[arg(long, requires = "fec")]
+    fec_no_interleave: bool,
+
     /// Skip the recommended TX filter tuning. By default the example
     /// programs TXCUTC.PARAMP/LPFCUT and TXDFE.RCUT per datasheet
     /// Table 6-53 (h<=0.75) or Table 6-54 (h>0.75) for the chosen srate.
@@ -350,10 +362,27 @@ fn main() -> io::Result<()> {
 
     // -- PSDU data whitening (PN9 scrambler per IEEE 802.15.4g) ---------
     // Off by default to match prior behaviour.
-    radio.bbc0_fskphrtx.value = radio.bbc0_fskphrtx.value.with_dw(args.whiten);
+    radio.bbc0_fskc2.value = radio
+        .bbc0_fskc2
+        .value
+        .with_fecs(args.fec_rsc)
+        .with_fecie(!args.fec_no_interleave)
+    spi::write_register(&mut dev, &radio.bbc0_fskc2)?;
+    radio.bbc0_fskphrtx.value = radio
+        .bbc0_fskphrtx
+        .value
+        .with_dw(args.whiten)
+        .with_sfd(args.fec);
     spi::write_register(&mut dev, &radio.bbc0_fskphrtx)?;
     if args.whiten {
-        eprintln!("whitening: PSDU PN9 scrambler enabled (FSKPHRTX.DW=1)");
+        eprintln!("whitening: PSDU PN9 enabled");
+    }
+    if args.fec {
+        eprintln!(
+            "fec: enabled (SFD1) scheme={} interleave={}",
+            if args.fec_rsc { "RSC" } else { "NRNSC" },
+            !args.fec_no_interleave,
+        );
     }
 
     // -- enable baseband + auto-FCS -------------------------------------

@@ -7,7 +7,7 @@ fn main() {
 
     // Radio initialization (from simple_radio example)
     let mut radio = Radio::new();
-    radio.rf_cfg.value = radio.rf_cfg.value.with_drv(3).with_irqmm(true);
+    radio.rf_cfg.value = radio.rf_cfg.value.with_drv(0).with_irqmm(true);
     radio.rf_cfg.value.set_irqp(true);
     let mut pending_writes = BulkWrites::new();
     pending_writes.add(&mut radio.rf_cfg);
