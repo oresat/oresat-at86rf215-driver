@@ -397,6 +397,12 @@ pub struct GpioConfig {
     /// GPIO line/offset for the radio IRQ, rising edge (default 25).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
+    /// GPIO chip for the PA enable line (no default; unset = feature off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pa_enable_chip: Option<String>,
+    /// GPIO line for the PA enable (no default; unset = feature off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pa_enable_line: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

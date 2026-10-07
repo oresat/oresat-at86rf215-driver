@@ -284,6 +284,15 @@ struct Args {
     #[arg(long)]
     gpio_line: Option<u32>,
 
+    /// GPIO chip path for the PA enable line. Overrides `[gpio].pa_enable_chip`.
+    #[arg(long)]
+    pa_enable_chip: Option<String>,
+
+    /// GPIO line number for the PA enable, driven high while the daemon is running.
+    /// Overrides `[gpio].pa_enable_line`.
+    #[arg(long)]
+    pa_enable_line: Option<u32>,
+
     /// TOML config file to load at startup.
     #[arg(long)]
     config: Option<String>,
@@ -646,6 +655,11 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
         .or(net.gpio.chip.clone())
         .unwrap_or_else(|| "/dev/gpiochip0".to_string());
     let gpio_line = args.gpio_line.or(net.gpio.line).unwrap_or(25);
+    let pa_enable = resolve_pa_enable(
+        args.pa_enable_chip.clone(),
+        args.pa_enable_line,
+        &net.gpio,
+    )?;
 
     let mut spidev: Option<spidev::Spidev> = if !args.dry_run {
         let dev = spi::open_with_speed(&spi_dev, spi_hz)?;
@@ -795,6 +809,36 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
             eprintln!("RX serviced by SPI polling on the timer tick (--poll)");
         }
         None
+    };
+
+    let _pa_enable: Option<PaEnable> = match pa_enable {
+        Some((chip, line)) if profile.can_transmit() && !args.dry_run => {
+            match gpiocdev::Request::builder()
+                .on_chip(&chip)
+                .with_line(line)
+                .as_output(gpiocdev::line::Value::Active)
+                .with_consumer("uhf_daemon")
+                .request()
+            {
+                Ok(req) => {
+                    eprintln!("PA enable: {chip}:{line} asserted (held until exit)");
+                    Some(PaEnable { req, chip, line })
+                }
+                Err(e) => {
+                    if let Some(ref mut dev) = spidev {
+                        radio_safe_shutdown(&mut radio, dev);
+                    }
+                    return Err(io::Error::other(format!(
+                        "Failed to claim PA enable {chip}:{line} - refusing to run"
+                    )));
+                }
+            }
+        }
+        Some((chip, line)) if !profile.can_transmit() => {
+            eprintln!("PA enable {chip}:{line} ignored: profile cannot transmit");
+            None
+        }
+        _ => None,
     };
 
     // -- event loop ------------------------------------------------------
@@ -1845,6 +1889,48 @@ fn radio_safe_shutdown(radio: &mut Radio, dev: &mut spidev::Spidev) {
     let _ = spi::write_register(dev, &radio.rf24_cmd);
     eprintln!("radio safed: front-end off (PADFE=0), RF09 TrxOff, RF24 Sleep");
     // RF_CLKO left alone.
+}
+
+/// Resolve the PA enable line as CLI flag first priority, TOML next. No default.
+/// Both chip and line must be given. One without the other is a config error.
+fn resolve_pa_enable(
+    cli_chip: Option<String>,
+    cli_line: Option<u32>,
+    cfg: &crate::config::GpioConfig,
+) -> io::Result<Option<(String, u32)>> {
+    let chip = cli_chip.or_else( || cfg.pa_enable_chip.clone());
+    let line = cli_line.or(cfg.pa_enable_line);
+    match (chip, line) {
+        (Some(chip), Some(line)) => Ok(Some((chip, line))),
+        (None, None) => Ok(None),
+        (Some(_), None) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "pa_enable_chip is set but pa_enable_line is not",
+        )),
+        (None, Some(_)) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "pa_enable_line is set but pa_enable_chip is not",
+        )),
+    }
+}
+
+/// Held PA enable GPIO output.
+struct PaEnable {
+    req: gpiocdev::Request,
+    chip: String,
+    line: u32,
+}
+
+impl Drop for PaEnable {
+    fn drop(&mut self) {
+        match self.req.set_value(self.line, gpiocdev::line::Value::Inactive) {
+            Ok(()) => eprintln!("PA enable: {}:{} de-asserted", self.chip, self.line),
+            Err(e) => eprintln!(
+                "warning: failed to de-assert PA enable {}:{} ({e})",
+                self.chip, self.line
+            ),
+        }
+    }
 }
 
 /// Warn (non-fatal) about resolved register values that weaken the link but do
