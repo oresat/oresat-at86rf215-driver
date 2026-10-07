@@ -108,6 +108,7 @@ impl Profile {
 }
 
 /// Settings for `RF_CLKO`, written right after every chip reset.
+#[derive(Clone, Copy)]
 struct Clko {
     /// `RF_CLKO.OS` clock output select, 0..=7.
     os: u8,
@@ -125,7 +126,7 @@ impl Clko {
             return Err(format!("RF_CLKO.OS={} is out of range (0..=7)", self.os));
         }
         if self.drv > 3 {
-            return Err(format!("RF_CLKO.DRV={} is out of range (0..=3)"), self.drv)
+            return Err(format!("RF_CLKO.DRV={} is out of range (0..=3)", self.drv));
         }
         Ok(())
     }
@@ -604,21 +605,30 @@ pub fn run(default_profile: Profile) -> io::Result<()> {
         eprintln!("config loaded: {}", path);
     }
 
-    let clko_os = args
-        .clko_os
-        .or(net.frontend.clko_os)
-        .unwrap_or_else(|| profile.default_clko_os());
+    let clko = Clko {
+        os: args
+            .clko_os
+            .or(net.frontend.clko_os)
+            .unwrap_or_else( || profile.default_clko_os()),
+        drv: args
+            .clko_drv
+            .or(net.frontend.clko_drv)
+            .unwrap_or(Clko::DEFAULT_DRV),
+    };
+    clko.validate()
+        .map_err(|m| io::Error::new(io::ErrorKind::InvalidInput, m))?;
     let rssi_offset_db = args
         .rssi_offset_db
         .or(net.frontend.rssi_offset_db)
         .unwrap_or_else(|| profile.default_rssi_offset_db());
+
 
     if args.config.is_some() {
         // Reject a config that would boot a deaf/dead radio (PT/RXDFE.SR hard
         // errors; AGCC/PADFE warnings). Only enforced when a config is supplied -
         // bench/dry-run runs with built-in defaults are unaffected.
         validate_radio_for_flight(&radio, profile);
-        if let Err(m) = flight_blocking_problems(&radio, profile, clko_os) {
+        if let Err(m) = flight_blocking_problems(&radio, profile, clko.os) {
             return Err(io::Error::new(io::ErrorKind::InvalidData, m));
         }
     }
@@ -1345,21 +1355,14 @@ fn init_radio(
     let (pn, vn) = spi::reset_and_identify(dev, radio)?;
 
     // Default at lowest drv. Tests working and lowers power useage.
-    radio.rf_clko.value = RfClko::new().with_os(clko_os).with_drv(0);
+    radio.rf_clko.value = clko.register();
     spi::write_register(dev, &radio.rf_clko)?;
     eprintln!(
-        "CLKO: RF_CLKO.OS={} ({})",
-        clko_os,
-        match clko_os {
-            0 => "off",
-            1 => "26 MHz",
-            2 => "32 MHz",
-            3 => "16 MHz",
-            4 => "8 MHz",
-            5 => "4 MHz",
-            6 => "2 MHz",
-            _ => "1 MHz",
-        },
+        "CLKO: RF_CLKO.OS={} ({}) DRV={} ({} mA)",
+        clko.os,
+        clko.os_label(),
+        clko.drv,
+        clko.drv_ma(),
     );
 
     eprintln!("chip: {:?} v{}", pn, vn);
