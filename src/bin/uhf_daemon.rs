@@ -173,7 +173,7 @@ struct Args {
     config: Option<String>,
 
     /// RF09 carrier frequency in Hz (sub-1 GHz).
-    #[arg(long, default_value_t = 436_500_000)]
+    #[arg(long, default_value_t = 401_025_000)]
     freq: u64,
 
     /// SPI-Poll BBC0_IRQS on the telemetry tick instead of waiting on the GPIO IRQ line. 
