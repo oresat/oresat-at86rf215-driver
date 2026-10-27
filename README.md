@@ -4,6 +4,7 @@ Microchip AT86RF215 Rust driver and utilites
 [Datasheet](https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/Atmel-42415-WIRELESS-AT86RF215_Datasheet.pdf) (PDF)
 Initial [design thoughts](https://docs.google.com/document/d/1zBbb-4qnycPR2GkD_XNbqpXR3gw3rPBdjSQARGNUBZ0/edit?tab=t.0)
 
+For additional info regarding Rust installation, read [The Rust Programming Language](https://doc.rust-lang.org/book/title-page.html)
 ## Setup/Dependecies
 
 Install the necessary dependecies:
@@ -12,10 +13,24 @@ Install the necessary dependecies:
 * `rustup`
 * `cargo-deb`
 
+Install cross-compiler tools
+```
+sudo apt install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+```
+
+Install Rust
+```
+curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+```
+
+Install Rust extension
+```
+cargo install cargo-deb
+```
+
 > [Note]
 > Distros vary in naming schemes for the cross-compiler of the `armv7-unknown-linux-gnueabihf` target
 > Ensure your cross-compiler binary name matches the value in `.cargo/config.toml`
-
 
 Install the necessary rust target:
 
