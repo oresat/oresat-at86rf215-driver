@@ -13,7 +13,7 @@ Install the necessary dependecies:
 * `rustup`
 * `cargo-deb`
 
-Install cross-compiler tools
+Install cross-compiler tools (g++-arm-linux-gnueabihf is not required but useful)
 ```
 sudo apt install gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
 ```
@@ -38,6 +38,16 @@ Install the necessary rust target:
 rustup target add armv7-unknown-linux-gnueabihf
 ```
 
+## Build .deb package
+```
+cargo deb --target=armv7-unknown-linux-gnueabihf
+```
+
+### On c3
+```
+sudo apt install ./.deb
+```
+
 ## Run Daemon on c3
 ```
 # Ground
@@ -45,11 +55,4 @@ uhf_daemon --config ground.toml --tx-bind 0.0.0.0:10025 --rx-peer <yamcs-host-ip
 
 # Satellite
 sudo uhf_daemon --rx-port 10025 --tx-port 10016 --config sat.toml
-```
-### Build .deb package
-```
-cargo deb --target=armv7-unknown-linux-gnueabihf
-
-# On c3
-sudo apt install ./.deb
 ```
