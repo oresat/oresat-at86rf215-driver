@@ -44,8 +44,9 @@ cargo deb --target=armv7-unknown-linux-gnueabihf
 ```
 
 ### On c3
+Change into `.deb` file directory.
 ```
-sudo apt install ./.deb
+sudo apt install ./*.deb
 ```
 
 ## Run Daemon on c3
